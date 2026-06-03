@@ -17,6 +17,10 @@ services:
     healthCheckPath: /health
     autoDeploy: true
     envVars:
+      # ВАЖНО: Render по умолчанию ставит свежий Node (26+), под который better-sqlite3
+      # ещё не собирается. Жёстко пиним Node 20 LTS.
+      - key: NODE_VERSION
+        value: 20.18.1
       - key: NODE_ENV
         value: production
       - key: PORT
