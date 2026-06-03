@@ -1,0 +1,25 @@
+# Render Blueprint: разворачивает backend как Web Service
+# Использование:
+#   1. https://dashboard.render.com → New + → Blueprint
+#   2. Подключите GitHub-репозиторий и выберите ветку main
+#   3. Render найдёт этот файл и создаст сервис автоматически
+#   4. После деплоя — скопируйте URL вида https://ias-uav-tek-backend.onrender.com
+#      и добавьте его в .env / GitHub Secret VITE_API_URL
+
+services:
+  - type: web
+    name: ias-uav-tek-backend
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install
+    startCommand: node src/index.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: CORS_ORIGIN
+        value: '*'

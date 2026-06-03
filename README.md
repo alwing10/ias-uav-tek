@@ -8,6 +8,50 @@
 > Прототип демонстрационный — без реальных бэкенд-вызовов. Все данные генерируются
 > на стороне клиента (детерминированный PRNG, ~1500 инцидентов и ~300 объектов ТЭК).
 
+## Архитектура
+
+```
+┌─────────────────────────┐    HTTPS     ┌────────────────────────┐
+│  Frontend (GitHub Pages)│ ───────────► │  Backend (Render.com)  │
+│  React + Vite + Tailwind│              │  Express + SQLite      │
+│  HashRouter             │ ◄─────────── │  /api/incidents, /kpi, │
+│                         │              │  /audit, /verify       │
+└──────────┬──────────────┘              └────────────────────────┘
+           │
+           │ публичные API (CORS-прокси)
+           ▼
+  ┌──────────────────┐  ┌──────────────────┐
+  │ GDELT 2.0 Doc API│  │ rss2json + СМИ   │
+  └──────────────────┘  └──────────────────┘
+```
+
+Фронт объединяет ТРИ источника данных:
+1. **Backend (БД)** — `DB-NNNN` — хранится в SQLite на Render, авто-синхр каждую минуту
+2. **Live (новости)** — `LIVE-NNNN` — GDELT + RSS, авто-обновление каждые 10 мин
+3. **Mocks (демо)** — `INC-NNNN` — 1500 сгенерированных событий для демо
+
+Дедупликация по `id`. На странице **Источники** — диагностика всех трёх каналов.
+
+## Backend
+
+Полная документация: [`backend/README.md`](./backend/README.md).
+
+Кратко:
+
+```bash
+# Локально:
+cd backend
+npm install
+npm start                                 # → http://localhost:4000/health
+
+# В корне проекта (фронт) создайте .env:
+echo "VITE_API_URL=http://localhost:4000" > .env
+npm run dev
+```
+
+Деплой на Render.com: Blueprint находит `backend/render.yaml` автоматически.
+После деплоя — добавьте URL в Repository Variable `VITE_API_URL` (Settings → Secrets and variables → Actions → Variables).
+
 ## Live-данные из открытых источников
 
 При запуске приложение автоматически опрашивает реальные API и подмешивает

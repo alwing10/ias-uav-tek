@@ -8,6 +8,7 @@ import { Button } from '@/components/common/Button';
 import { MultiSelect } from '@/components/common/MultiSelect';
 import { useIncidents, type Incident } from '@/store/incidents';
 import { useLiveData } from '@/store/liveData';
+import { useBackend } from '@/store/backendData';
 import { REGIONS } from '@/mocks/regions';
 import {
   OBJECT_TYPE_LABEL,
@@ -30,9 +31,14 @@ export function MapPage() {
   const liveStatus = useLiveData((s) => s.status);
   const lastUpdate = useLiveData((s) => s.lastUpdate);
   const refresh = useLiveData((s) => s.refresh);
+  const backendIncidents = useBackend((s) => s.incidents);
 
-  // Объединяем сохранённые (мок + ручные) и live
-  const incidents = useMemo(() => [...liveIncidents, ...stored], [liveIncidents, stored]);
+  // Объединяем три источника: live (новости) → backend (БД) → mocks (демо), дедуп по ID
+  const incidents = useMemo(() => {
+    const all = [...liveIncidents, ...backendIncidents, ...stored];
+    const seen = new Set<string>();
+    return all.filter((i) => (seen.has(i.id) ? false : (seen.add(i.id), true)));
+  }, [liveIncidents, backendIncidents, stored]);
 
   const [mode, setMode] = useState<MapMode>('markers');
   const [period, setPeriod] = useState<{ from: string; to: string }>({ from: '2026-01-01', to: '2026-05-29' });

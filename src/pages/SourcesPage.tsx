@@ -9,6 +9,7 @@ import { SOURCES } from '@/mocks/sources';
 import type { DataSource } from '@/types/domain';
 import { relativeMin, nf } from '@/utils/format';
 import { useLiveData } from '@/store/liveData';
+import { useBackend } from '@/store/backendData';
 
 type SourceTab = 'all' | 'media' | 'telegram' | 'rss' | 'api';
 
@@ -30,6 +31,13 @@ export function SourcesPage() {
   const liveDiag = useLiveData((s) => s.diagnostics);
   const liveErr = useLiveData((s) => s.errorMessage);
   const refreshLive = useLiveData((s) => s.refresh);
+  const backendStatus = useBackend((s) => s.status);
+  const backendEnabled = useBackend((s) => s.enabled);
+  const backendUrl = useBackend((s) => s.apiUrl);
+  const backendCount = useBackend((s) => s.incidents.length);
+  const backendLast = useBackend((s) => s.lastSync);
+  const backendErr = useBackend((s) => s.errorMessage);
+  const refreshBackend = useBackend((s) => s.refresh);
 
   // Эмуляция «реального времени»: новая запись каждые 3 секунды
   useEffect(() => {
@@ -143,6 +151,85 @@ export function SourcesPage() {
         {liveErr && (
           <div className="mt-3 rounded border border-orange-200 bg-orange-50 px-3 py-2 text-[11px] text-orange-800">
             <b>Диагностика:</b> {liveErr}
+          </div>
+        )}
+      </Card>
+
+      <Card
+        className="mt-4"
+        title="Подключение к backend (БД)"
+        subtitle={
+          backendEnabled
+            ? `Express + SQLite REST API: ${backendUrl}`
+            : 'VITE_API_URL не задан — клиент работает без backend (моки + live-источники)'
+        }
+        toolbar={
+          backendEnabled && (
+            <Button size="sm" variant="outline" onClick={() => void refreshBackend()}>
+              Синхронизировать
+            </Button>
+          )
+        }
+      >
+        <div className="grid grid-cols-2 gap-4 text-xs md:grid-cols-4">
+          <div>
+            <div className="text-[10px] font-semibold uppercase text-ink-muted">Статус</div>
+            <div className="mt-1 flex items-center gap-1.5">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  backendStatus === 'ok'
+                    ? 'bg-emerald-500'
+                    : backendStatus === 'connecting'
+                      ? 'bg-orange-500'
+                      : backendStatus === 'error'
+                        ? 'bg-red-500'
+                        : 'bg-zinc-400'
+                }`}
+              />
+              <span className="text-ink">
+                {backendStatus === 'ok' && 'Подключён'}
+                {backendStatus === 'connecting' && 'Подключение…'}
+                {backendStatus === 'error' && 'Недоступен'}
+                {backendStatus === 'disabled' && 'Не настроен'}
+                {backendStatus === 'idle' && 'Готов'}
+              </span>
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase text-ink-muted">Инцидентов в БД</div>
+            <div className="mt-1 text-base font-bold text-brand-700">{backendCount}</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase text-ink-muted">Последняя синхр.</div>
+            <div className="mt-1 text-ink">{backendLast ? relativeMin(backendLast) : 'не выполнялась'}</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase text-ink-muted">Авто-синхр.</div>
+            <div className="mt-1 text-ink">каждые 60 сек</div>
+          </div>
+        </div>
+        {backendErr && (
+          <div className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-800">
+            <b>Ошибка:</b> {backendErr}
+          </div>
+        )}
+        {!backendEnabled && (
+          <div className="mt-3 rounded border border-brand-200 bg-brand-50 p-3 text-[11px] text-brand-800">
+            Чтобы подключить backend:
+            <ol className="mt-1 list-decimal pl-4">
+              <li>
+                Разверните <code>backend/</code> на Render.com (см. <code>backend/README.md</code>) или
+                запустите локально: <code>cd backend && npm install && npm start</code>.
+              </li>
+              <li>
+                Создайте файл <code>.env</code> в корне проекта со строкой{' '}
+                <code>VITE_API_URL=https://&lt;адрес&gt;</code>.
+              </li>
+              <li>
+                Для GitHub Pages — добавьте Variable <code>VITE_API_URL</code> в Settings → Secrets &
+                Variables → Actions.
+              </li>
+            </ol>
           </div>
         )}
       </Card>

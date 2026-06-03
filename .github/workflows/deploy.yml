@@ -30,6 +30,10 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Build
+        # Backend URL подхватывается из Repository Variable VITE_API_URL.
+        # Если переменной нет — фронт работает без backend (моки + GDELT/RSS).
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
         run: npm run build
 
       - name: Setup Pages

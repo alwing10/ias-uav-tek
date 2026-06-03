@@ -14,6 +14,7 @@ import {
 } from '@/components/common/StatusBadge';
 import { useIncidents } from '@/store/incidents';
 import { useLiveData } from '@/store/liveData';
+import { useBackend } from '@/store/backendData';
 import {
   OBJECT_TYPE_GROUP,
   OBJECT_TYPE_LABEL,
@@ -34,7 +35,12 @@ export function IncidentDetailPage() {
   const navigate = useNavigate();
   const { incidents: stored, updateAttributes } = useIncidents();
   const live = useLiveData((s) => s.incidents);
-  const incidents = useMemo(() => [...live, ...stored], [live, stored]);
+  const backendIncidents = useBackend((s) => s.incidents);
+  const incidents = useMemo(() => {
+    const all = [...live, ...backendIncidents, ...stored];
+    const seen = new Set<string>();
+    return all.filter((i) => (seen.has(i.id) ? false : (seen.add(i.id), true)));
+  }, [live, backendIncidents, stored]);
   const incident = incidents.find((i) => i.id === id);
   const user = useAuth((s) => s.user);
   const [tab, setTab] = useState<DetailTab>('overview');

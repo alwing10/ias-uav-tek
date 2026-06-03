@@ -24,6 +24,8 @@ import { Tabs } from '@/components/common/Tabs';
 import { KpiCard } from '@/components/common/KpiCard';
 import { useIncidents } from '@/store/incidents';
 import { useLiveData } from '@/store/liveData';
+import { useBackend } from '@/store/backendData';
+import type { Incident } from '@/types/domain';
 import {
   OBJECT_TYPE_GROUP,
   SCENARIOS,
@@ -40,7 +42,12 @@ type SubTab = 'dynamics' | 'structure' | 'geography' | 'forecast';
 export function AnalyticsPage() {
   const stored = useIncidents((s) => s.incidents);
   const live = useLiveData((s) => s.incidents);
-  const incidents = useMemo(() => [...live, ...stored], [live, stored]);
+  const backendIncidents = useBackend((s) => s.incidents);
+  const incidents = useMemo(() => {
+    const all = [...live, ...backendIncidents, ...stored];
+    const seen = new Set<string>();
+    return all.filter((i) => (seen.has(i.id) ? false : (seen.add(i.id), true)));
+  }, [live, backendIncidents, stored]);
   const [tab, setTab] = useState<SubTab>('dynamics');
 
   return (
@@ -79,7 +86,7 @@ export function AnalyticsPage() {
   );
 }
 
-function DynamicsPanel({ incidents }: { incidents: ReturnType<typeof useIncidents>['incidents'] }) {
+function DynamicsPanel({ incidents }: { incidents: Incident[] }) {
   const monthlyData = useMemo(() => {
     const by = new Map<number, number>();
     incidents.forEach((i) => {
@@ -261,7 +268,7 @@ function DynamicsPanel({ incidents }: { incidents: ReturnType<typeof useIncident
   );
 }
 
-function StructurePanel({ incidents }: { incidents: ReturnType<typeof useIncidents>['incidents'] }) {
+function StructurePanel({ incidents }: { incidents: Incident[] }) {
   const uavData = (['fpv', 'plane', 'mini', 'multi', 'loitering', 'unknown'] as UavType[]).map((u) => ({
     name: UAV_LABEL[u],
     value: incidents.filter((i) => i.uavType === u).length,
@@ -335,7 +342,7 @@ function StructurePanel({ incidents }: { incidents: ReturnType<typeof useInciden
   );
 }
 
-function GeographyPanel({ incidents }: { incidents: ReturnType<typeof useIncidents>['incidents'] }) {
+function GeographyPanel({ incidents }: { incidents: Incident[] }) {
   const data = useMemo(() => {
     const m = new Map<string, number>();
     incidents.forEach((i) => m.set(i.regionCode, (m.get(i.regionCode) ?? 0) + 1));
@@ -383,7 +390,7 @@ function GeographyPanel({ incidents }: { incidents: ReturnType<typeof useInciden
   );
 }
 
-function ForecastPanel({ incidents }: { incidents: ReturnType<typeof useIncidents>['incidents'] }) {
+function ForecastPanel({ incidents }: { incidents: Incident[] }) {
   // 5 факт. месяцев + 3 прогноз
   const fact = MONTHS.slice(0, 5).map((m, idx) => ({
     month: m,

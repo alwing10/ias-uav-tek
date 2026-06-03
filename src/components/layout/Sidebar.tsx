@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/store/auth';
 import { useLiveData } from '@/store/liveData';
+import { useBackend } from '@/store/backendData';
 import type { Role } from '@/types/domain';
 import { ROLE_LABEL } from '@/types/domain';
 import { canSee } from '@/utils/rbac';
@@ -42,6 +43,8 @@ export function Sidebar() {
   const liveLast = useLiveData((s) => s.lastUpdate);
   const liveCount = useLiveData((s) => s.incidents.length);
   const refresh = useLiveData((s) => s.refresh);
+  const backendStatus = useBackend((s) => s.status);
+  const backendCount = useBackend((s) => s.incidents.length);
 
   const statusDot =
     liveStatus === 'ok'
@@ -99,24 +102,51 @@ export function Sidebar() {
         </select>
       </div>
 
-      <div className="mx-3 mb-3 rounded-card bg-brand-50 p-3">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-semibold text-brand-700">Сбор данных</span>
-          <span className={cn('flex h-2 w-2 rounded-full', statusDot)} />
+      <div className="mx-3 mb-3 space-y-2">
+        <div className="rounded-card bg-brand-50 p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-brand-700">Сбор данных</span>
+            <span className={cn('flex h-2 w-2 rounded-full', statusDot)} />
+          </div>
+          <div className="mt-1 flex items-center gap-1 text-[10px] text-ink-muted">
+            <Activity className="h-3 w-3" />
+            {statusLabel} • {liveCount} live
+          </div>
+          <div className="mt-1 flex items-center justify-between text-[10px] text-ink-muted">
+            <span>{liveLast ? `Цикл: ${relativeMin(liveLast)}` : 'Ещё не запускался'}</span>
+            <button
+              onClick={() => void refresh()}
+              className="rounded p-0.5 text-brand-600 hover:bg-white"
+              title="Обновить сейчас"
+            >
+              <RefreshCw className={cn('h-3 w-3', liveStatus === 'loading' && 'animate-spin')} />
+            </button>
+          </div>
         </div>
-        <div className="mt-1 flex items-center gap-1 text-[10px] text-ink-muted">
-          <Activity className="h-3 w-3" />
-          {statusLabel} • {liveCount} live
-        </div>
-        <div className="mt-1 flex items-center justify-between text-[10px] text-ink-muted">
-          <span>{liveLast ? `Цикл: ${relativeMin(liveLast)}` : 'Ещё не запускался'}</span>
-          <button
-            onClick={() => void refresh()}
-            className="rounded p-0.5 text-brand-600 hover:bg-white"
-            title="Обновить сейчас"
-          >
-            <RefreshCw className={cn('h-3 w-3', liveStatus === 'loading' && 'animate-spin')} />
-          </button>
+        {/* Статус backend подключения */}
+        <div className="rounded-card border border-surface-border bg-white p-2.5">
+          <div className="flex items-center justify-between text-[10px]">
+            <span className="font-semibold text-ink">Backend (БД)</span>
+            <span
+              className={cn(
+                'flex h-2 w-2 rounded-full',
+                backendStatus === 'ok'
+                  ? 'bg-emerald-500'
+                  : backendStatus === 'connecting'
+                    ? 'bg-orange-500 animate-pulse'
+                    : backendStatus === 'error'
+                      ? 'bg-red-600'
+                      : 'bg-zinc-400',
+              )}
+            />
+          </div>
+          <div className="mt-0.5 text-[10px] text-ink-muted">
+            {backendStatus === 'ok' && `${backendCount} в БД`}
+            {backendStatus === 'connecting' && 'Подключение…'}
+            {backendStatus === 'error' && 'Недоступен'}
+            {backendStatus === 'disabled' && 'Не настроен (VITE_API_URL)'}
+            {backendStatus === 'idle' && 'Готов'}
+          </div>
         </div>
       </div>
     </aside>

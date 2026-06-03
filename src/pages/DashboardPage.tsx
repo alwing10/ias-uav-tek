@@ -24,6 +24,7 @@ import {
 } from '@/components/common/StatusBadge';
 import { useIncidents } from '@/store/incidents';
 import { useLiveData } from '@/store/liveData';
+import { useBackend } from '@/store/backendData';
 import {
   OBJECT_TYPE_GROUP,
   SEVERITY_COLOR,
@@ -49,8 +50,15 @@ export function DashboardPage() {
   const stored = useIncidents((s) => s.incidents);
   const live = useLiveData((s) => s.incidents);
   const liveStatus = useLiveData((s) => s.status);
-  // Объединяем сохранённые и live в один поток. Live идут первыми (свежие сверху).
-  const incidents = useMemo(() => [...live, ...stored], [live, stored]);
+  const backendIncidents = useBackend((s) => s.incidents);
+  const backendStatus = useBackend((s) => s.status);
+  // Объединяем источники: live (свежие новости) → backend (БД) → mocks (демо).
+  // Дедупликация по ID, чтобы backend не клонировал то же что прислал live.
+  const incidents = useMemo(() => {
+    const all = [...live, ...backendIncidents, ...stored];
+    const seen = new Set<string>();
+    return all.filter((i) => (seen.has(i.id) ? false : (seen.add(i.id), true)));
+  }, [live, backendIncidents, stored]);
 
   const days = PERIODS.find((p) => p.value === period)!.days;
   const from = new Date(NOW.getTime() - days * 24 * 3600_000);
@@ -157,19 +165,27 @@ export function DashboardPage() {
         </div>
       }
     >
-      {live.length > 0 && (
-        <div className="mb-3 flex items-center gap-2 rounded-card border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-          <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
-          <b>Live-режим активен:</b> подгружено <b>{live.length}</b> реальных событий из открытых
-          источников (GDELT 2.0 + RSS российских СМИ). Обновление каждые 10 минут.
-        </div>
-      )}
-      {live.length === 0 && liveStatus === 'error' && (
-        <div className="mb-3 flex items-center gap-2 rounded-card border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
-          <span className="flex h-2 w-2 rounded-full bg-orange-500" />
-          Не удалось загрузить реальные данные из источников. Показаны только демо-данные.
-        </div>
-      )}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {backendStatus === 'ok' && (
+          <div className="flex items-center gap-2 rounded-card border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-700">
+            <span className="flex h-2 w-2 rounded-full bg-brand-600" />
+            <b>Backend подключён:</b> {backendIncidents.length} инцидентов из БД (Express + SQLite).
+            Авто-синхронизация каждую минуту.
+          </div>
+        )}
+        {live.length > 0 && (
+          <div className="flex items-center gap-2 rounded-card border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+            <b>Live-источники:</b> {live.length} событий из GDELT + RSS СМИ.
+          </div>
+        )}
+        {live.length === 0 && liveStatus === 'error' && (
+          <div className="flex items-center gap-2 rounded-card border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+            <span className="flex h-2 w-2 rounded-full bg-orange-500" />
+            Live-источники недоступны. Показаны только данные из БД и демо.
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <KpiCard

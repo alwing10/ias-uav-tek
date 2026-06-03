@@ -8,6 +8,8 @@ import { Modal } from '@/components/common/Modal';
 import { SeverityBadge, VerificationBadge } from '@/components/common/StatusBadge';
 import { useIncidents } from '@/store/incidents';
 import { useLiveData } from '@/store/liveData';
+import { useBackend } from '@/store/backendData';
+import { verifyIncident } from '@/services/backendApi';
 import { useAuth } from '@/store/auth';
 import {
   SEVERITY_LABEL,
@@ -21,12 +23,34 @@ import { REGIONS } from '@/mocks/regions';
 export function VerificationPage() {
   const { incidents: stored, bulkVerify, updateAttributes } = useIncidents();
   const live = useLiveData((s) => s.incidents);
-  const incidents = useMemo(() => [...live, ...stored], [live, stored]);
+  const backendIncidents = useBackend((s) => s.incidents);
+  const backendEnabled = useBackend((s) => s.enabled);
+  const backendRefresh = useBackend((s) => s.refresh);
+  const incidents = useMemo(() => {
+    const all = [...live, ...backendIncidents, ...stored];
+    const seen = new Set<string>();
+    return all.filter((i) => (seen.has(i.id) ? false : (seen.add(i.id), true)));
+  }, [live, backendIncidents, stored]);
   const user = useAuth((s) => s.user);
   const queue = useMemo(
     () => incidents.filter((i) => i.verified === 'pending' || i.verified === 'new'),
     [incidents],
   );
+
+  // Если включён backend — отправляем верификации и туда (для DB- и LIVE- инцидентов)
+  async function backendVerify(ids: string[], status: 'verified' | 'rejected' | 'pending') {
+    if (!backendEnabled) return;
+    for (const id of ids) {
+      if (id.startsWith('DB-') || id.startsWith('LIVE-')) {
+        try {
+          await verifyIncident(id, status, user?.name);
+        } catch {
+          /* ignore — UI остаётся консистентным с локальным стором */
+        }
+      }
+    }
+    void backendRefresh();
+  }
   const [selected, setSelected] = useState<string[]>([]);
   const [compareId, setCompareId] = useState<string | null>(null);
 
@@ -38,9 +62,10 @@ export function VerificationPage() {
   }
 
   function applyBulk(action: 'approve' | 'reject' | 'ask') {
-    if (action === 'approve') bulkVerify(selected, 'verified', user?.name);
-    if (action === 'reject') bulkVerify(selected, 'rejected', user?.name);
-    if (action === 'ask') bulkVerify(selected, 'pending', user?.name);
+    const status: 'verified' | 'rejected' | 'pending' =
+      action === 'approve' ? 'verified' : action === 'reject' ? 'rejected' : 'pending';
+    bulkVerify(selected, status, user?.name);
+    void backendVerify(selected, status);
     setSelected([]);
   }
 
@@ -143,6 +168,7 @@ export function VerificationPage() {
                 variant="outline"
                 onClick={() => {
                   bulkVerify([compareIncident.id], 'rejected', user?.name);
+                  void backendVerify([compareIncident.id], 'rejected');
                   setCompareId(null);
                 }}
               >
@@ -151,6 +177,7 @@ export function VerificationPage() {
               <Button
                 onClick={() => {
                   bulkVerify([compareIncident.id], 'verified', user?.name);
+                  void backendVerify([compareIncident.id], 'verified');
                   setCompareId(null);
                 }}
               >

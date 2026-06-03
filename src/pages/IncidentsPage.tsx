@@ -15,6 +15,7 @@ import { CategoryBadge } from '@/components/common/CategoryBadge';
 import { REGIONS } from '@/mocks/regions';
 import { useIncidents } from '@/store/incidents';
 import { useLiveData } from '@/store/liveData';
+import { useBackend } from '@/store/backendData';
 import {
   OBJECT_TYPE_LABEL,
   SEVERITY_LABEL,
@@ -53,7 +54,12 @@ type SortKey = 'datetime' | 'damage' | 'severity' | 'object' | 'region';
 export function IncidentsPage() {
   const { incidents: stored, addIncident } = useIncidents();
   const live = useLiveData((s) => s.incidents);
-  const incidents = useMemo(() => [...live, ...stored], [live, stored]);
+  const backendIncidents = useBackend((s) => s.incidents);
+  const incidents = useMemo(() => {
+    const all = [...live, ...backendIncidents, ...stored];
+    const seen = new Set<string>();
+    return all.filter((i) => (seen.has(i.id) ? false : (seen.add(i.id), true)));
+  }, [live, backendIncidents, stored]);
   const [period, setPeriod] = useState<{ from: string; to: string }>({ from: '2026-01-01', to: '2026-05-29' });
   const [regions, setRegions] = useState<string[]>([]);
   const [categories, setCategories] = useState<ObjectCategory[]>([]);
