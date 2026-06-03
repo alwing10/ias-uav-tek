@@ -7,7 +7,12 @@
  *   2) rss2json.com (https://api.rss2json.com/v1/api.json)
  *      — конвертирует RSS российских СМИ в JSON, разрешает CORS.
  *
- * Для GDELT (нет CORS-заголовков) идёт CORS-прокси https://corsproxy.io/?...
+ * GDELT не отдаёт CORS-заголовки → идём через цепочку бесплатных CORS-прокси.
+ * Если один прокси отдал 429/5xx — пробуем следующий. Если все упали —
+ * graceful failure, остаётся RSS.
+ *
+ * Ответ GDELT кэшируется в localStorage на 10 минут, чтобы не дёргать прокси
+ * на каждом маунте/перезагрузке (это главная причина 429).
  *
  * Полученные новости проходят парсер:
  *   - определяется регион по тексту (мапинг на REGIONS)
@@ -20,7 +25,37 @@
 import type { Incident, ObjectCategory, ObjectType, Severity, UavType } from '@/types/domain';
 import { REGIONS } from '@/mocks/regions';
 
-const CORS_PROXY = 'https://corsproxy.io/?';
+// Цепочка CORS-прокси. Каждый принимает целевой URL чуть по-разному:
+// одни хотят URL как есть, другие — encodeURIComponent. Обернём в функции.
+type ProxyWrap = (target: string) => string;
+const CORS_PROXIES: { name: string; wrap: ProxyWrap }[] = [
+  { name: 'allorigins',  wrap: (t) => `https://api.allorigins.win/raw?url=${encodeURIComponent(t)}` },
+  { name: 'codetabs',    wrap: (t) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(t)}` },
+  { name: 'corsproxy.io',wrap: (t) => `https://corsproxy.io/?${encodeURIComponent(t)}` },
+  { name: 'thingproxy',  wrap: (t) => `https://thingproxy.freeboard.io/fetch/${t}` },
+];
+
+const GDELT_CACHE_KEY = 'ias-gdelt-cache-v1';
+const GDELT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 минут
+
+async function fetchViaProxyChain(target: string): Promise<Response> {
+  let lastErr: Error | null = null;
+  for (const p of CORS_PROXIES) {
+    try {
+      const res = await fetch(p.wrap(target), {
+        signal: AbortSignal.timeout(12_000),
+        headers: { Accept: 'application/json, */*' },
+      });
+      if (res.ok) return res;
+      // 429/5xx — пробуем следующий
+      lastErr = new Error(`${p.name} HTTP ${res.status}`);
+    } catch (e) {
+      lastErr = e as Error;
+      lastErr.message = `${p.name}: ${lastErr.message}`;
+    }
+  }
+  throw lastErr ?? new Error('Все CORS-прокси недоступны');
+}
 
 // ---------- GDELT 2.0 Doc API ----------
 
@@ -39,8 +74,40 @@ interface GdeltDocResponse {
   articles?: GdeltArticle[];
 }
 
+interface GdeltCache {
+  ts: number;
+  articles: GdeltArticle[];
+}
+
+function readGdeltCache(): GdeltArticle[] | null {
+  try {
+    const raw = localStorage.getItem(GDELT_CACHE_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw) as GdeltCache;
+    if (Date.now() - c.ts < GDELT_CACHE_TTL_MS) return c.articles;
+  } catch {
+    /* пусто */
+  }
+  return null;
+}
+
+function writeGdeltCache(articles: GdeltArticle[]) {
+  try {
+    const c: GdeltCache = { ts: Date.now(), articles };
+    localStorage.setItem(GDELT_CACHE_KEY, JSON.stringify(c));
+  } catch {
+    /* localStorage переполнен — игнорируем */
+  }
+}
+
 async function fetchGdelt(): Promise<GdeltArticle[]> {
-  const query = '(drone OR UAV OR "БПЛА" OR "беспилотник") (Russia OR Russian OR Россия) (oil OR refinery OR pipeline OR "нефть" OR "ТЭК" OR substation OR электростанция)';
+  // 1) Кэш ещё свежий — возвращаем без сетевых запросов
+  const cached = readGdeltCache();
+  if (cached) return cached;
+
+  // 2) Идём в сеть через цепочку прокси
+  const query =
+    '(drone OR UAV OR "БПЛА" OR "беспилотник") (Russia OR Russian OR Россия) (oil OR refinery OR pipeline OR "нефть" OR "ТЭК" OR substation OR электростанция)';
   const params = new URLSearchParams({
     query,
     mode: 'ArtList',
@@ -50,11 +117,19 @@ async function fetchGdelt(): Promise<GdeltArticle[]> {
     timespan: '7d',
   });
   const target = `https://api.gdeltproject.org/api/v2/doc/doc?${params.toString()}`;
-  const url = `${CORS_PROXY}${encodeURIComponent(target)}`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) throw new Error(`GDELT HTTP ${res.status}`);
-  const data: GdeltDocResponse = await res.json();
-  return data.articles ?? [];
+  const res = await fetchViaProxyChain(target);
+  const text = await res.text();
+  // GDELT иногда отдаёт пустой ответ при перегрузке — это валидный JSON ""
+  if (!text || text.length < 2) return [];
+  let data: GdeltDocResponse;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  const articles = data.articles ?? [];
+  writeGdeltCache(articles);
+  return articles;
 }
 
 // ---------- RSS через rss2json.com ----------
@@ -79,11 +154,48 @@ const RSS_FEEDS: { name: string; url: string }[] = [
 ];
 
 async function fetchRssFeed(feedUrl: string): Promise<RssItem[]> {
-  const url = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedUrl)}&count=40`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) throw new Error(`rss2json HTTP ${res.status}`);
-  const data: Rss2JsonResponse = await res.json();
-  return data.items ?? [];
+  // rss2json.com (без ключа) — основной путь
+  try {
+    const url = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedUrl)}&count=40`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
+    if (res.ok) {
+      const data: Rss2JsonResponse = await res.json();
+      return data.items ?? [];
+    }
+  } catch {
+    /* fallthrough */
+  }
+  // Запасной путь: парсим RSS-XML напрямую через CORS-прокси
+  try {
+    const res = await fetchViaProxyChain(feedUrl);
+    const xml = await res.text();
+    return parseRssXml(xml);
+  } catch {
+    return [];
+  }
+}
+
+// Минимальный парсер RSS XML (заголовок/дата/ссылка/описание)
+function parseRssXml(xml: string): RssItem[] {
+  const items: RssItem[] = [];
+  const itemRe = /<item\b[\s\S]*?<\/item>/g;
+  const matches = xml.match(itemRe) ?? [];
+  for (const block of matches.slice(0, 40)) {
+    const get = (tag: string) => {
+      const m = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+      if (!m) return '';
+      let v = m[1] ?? '';
+      v = v.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
+      return v.trim();
+    };
+    items.push({
+      title: get('title'),
+      pubDate: get('pubDate') || new Date().toUTCString(),
+      link: get('link'),
+      description: get('description'),
+    });
+  }
+  return items;
 }
 
 // ---------- Парсер новости -> Incident ----------
@@ -265,7 +377,8 @@ export async function fetchLiveIncidents(): Promise<LiveFetchResult> {
     }
     diag.gdeltCount = out.length;
   } catch (e) {
-    diag.error = `GDELT: ${(e as Error).message}`;
+    diag.gdeltOk = false;
+    diag.error = `GDELT недоступен (все CORS-прокси отдали ошибку: ${(e as Error).message}). RSS-источники продолжают работать.`;
   }
 
   // RSS
