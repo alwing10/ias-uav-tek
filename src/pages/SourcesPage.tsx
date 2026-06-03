@@ -179,8 +179,8 @@ export function SourcesPage() {
                 className={`h-2 w-2 rounded-full ${
                   backendStatus === 'ok'
                     ? 'bg-emerald-500'
-                    : backendStatus === 'connecting'
-                      ? 'bg-orange-500'
+                    : backendStatus === 'connecting' || backendStatus === 'waking'
+                      ? 'bg-orange-500 animate-pulse'
                       : backendStatus === 'error'
                         ? 'bg-red-500'
                         : 'bg-zinc-400'
@@ -188,7 +188,8 @@ export function SourcesPage() {
               />
               <span className="text-ink">
                 {backendStatus === 'ok' && 'Подключён'}
-                {backendStatus === 'connecting' && 'Подключение…'}
+                {backendStatus === 'waking' && 'Пробуждение Render (до 60 сек)…'}
+                {backendStatus === 'connecting' && 'Синхронизация…'}
                 {backendStatus === 'error' && 'Недоступен'}
                 {backendStatus === 'disabled' && 'Не настроен'}
                 {backendStatus === 'idle' && 'Готов'}

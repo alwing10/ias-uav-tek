@@ -132,7 +132,7 @@ export function Sidebar() {
                 'flex h-2 w-2 rounded-full',
                 backendStatus === 'ok'
                   ? 'bg-emerald-500'
-                  : backendStatus === 'connecting'
+                  : backendStatus === 'connecting' || backendStatus === 'waking'
                     ? 'bg-orange-500 animate-pulse'
                     : backendStatus === 'error'
                       ? 'bg-red-600'
@@ -142,7 +142,8 @@ export function Sidebar() {
           </div>
           <div className="mt-0.5 text-[10px] text-ink-muted">
             {backendStatus === 'ok' && `${backendCount} в БД`}
-            {backendStatus === 'connecting' && 'Подключение…'}
+            {backendStatus === 'waking' && 'Пробуждение Render…'}
+            {backendStatus === 'connecting' && 'Синхронизация…'}
             {backendStatus === 'error' && 'Недоступен'}
             {backendStatus === 'disabled' && 'Не настроен (VITE_API_URL)'}
             {backendStatus === 'idle' && 'Готов'}

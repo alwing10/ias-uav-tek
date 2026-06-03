@@ -23,22 +23,42 @@ export interface BackendHealth {
   version: string;
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
+// Render Free усыпляет сервис через 15 мин неактивности. Холодный старт
+// иногда занимает 50–60 секунд. Поэтому таймаут на отдельный запрос — 75 сек.
+const DEFAULT_TIMEOUT_MS = 75_000;
+
+async function req<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
   if (!API_URL) throw new Error('Backend disabled (VITE_API_URL not set)');
+  const { timeoutMs, ...rest } = init ?? {};
   const res = await fetch(`${API_URL}${path}`, {
-    ...init,
-    signal: AbortSignal.timeout(20_000),
+    ...rest,
+    signal: AbortSignal.timeout(timeoutMs ?? DEFAULT_TIMEOUT_MS),
     headers: {
       'content-type': 'application/json',
-      ...(init?.headers ?? {}),
+      ...(rest.headers ?? {}),
     },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text().catch(() => '')}`);
   return res.json() as Promise<T>;
 }
 
+/**
+ * Пробуждение Render Free. Сначала шлём /health с длинным таймаутом —
+ * это «будит» спящий сервис. Дальше остальные запросы быстрые.
+ *
+ * Делаем ДВА retry: если первый health-check упал по таймауту в 75с —
+ * Render всё ещё просыпается, ждём ещё.
+ */
 export async function getHealth(): Promise<BackendHealth> {
-  return req<BackendHealth>('/health');
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await req<BackendHealth>('/health', { timeoutMs: 75_000 });
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error(String(e));
+    }
+  }
+  throw lastErr ?? new Error('Backend health-check failed');
 }
 
 export interface ListIncidentsQuery {

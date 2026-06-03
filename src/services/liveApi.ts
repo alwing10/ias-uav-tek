@@ -39,7 +39,7 @@ const GDELT_CACHE_KEY = 'ias-gdelt-cache-v1';
 const GDELT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 минут
 
 async function fetchViaProxyChain(target: string): Promise<Response> {
-  let lastErr: Error | null = null;
+  const failures: string[] = [];
   for (const p of CORS_PROXIES) {
     try {
       const res = await fetch(p.wrap(target), {
@@ -48,13 +48,15 @@ async function fetchViaProxyChain(target: string): Promise<Response> {
       });
       if (res.ok) return res;
       // 429/5xx — пробуем следующий
-      lastErr = new Error(`${p.name} HTTP ${res.status}`);
+      failures.push(`${p.name}: HTTP ${res.status}`);
     } catch (e) {
-      lastErr = e as Error;
-      lastErr.message = `${p.name}: ${lastErr.message}`;
+      // ВАЖНО: не мутируем Error (его .message может быть readonly в prod),
+      // а просто кладём сообщение в массив failures.
+      const msg = e instanceof Error ? e.message : String(e);
+      failures.push(`${p.name}: ${msg}`);
     }
   }
-  throw lastErr ?? new Error('Все CORS-прокси недоступны');
+  throw new Error(failures.join(' | '));
 }
 
 // ---------- GDELT 2.0 Doc API ----------

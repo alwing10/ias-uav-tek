@@ -15,7 +15,7 @@ import {
   type KpiStats,
 } from '@/services/backendApi';
 
-type BackendStatus = 'disabled' | 'idle' | 'connecting' | 'ok' | 'error';
+type BackendStatus = 'disabled' | 'idle' | 'connecting' | 'waking' | 'ok' | 'error';
 
 interface BackendState {
   enabled: boolean;
@@ -43,7 +43,10 @@ export const useBackend = create<BackendState>((set, get) => ({
 
   refresh: async () => {
     if (!BACKEND_ENABLED) return;
-    set({ status: 'connecting', errorMessage: null });
+    const wasOk = get().status === 'ok';
+    // На холодном старте Render будит сервис до 60с. Чтобы пользователь
+    // понимал что происходит — отдельный статус 'waking' на первой загрузке.
+    set({ status: wasOk ? 'connecting' : 'waking', errorMessage: null });
     try {
       await getHealth();
       const [items, kpi] = await Promise.all([fetchIncidents({ limit: 1000 }), fetchKpi()]);
