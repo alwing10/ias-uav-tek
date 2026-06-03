@@ -1,0 +1,8 @@
+services:
+  ias-uav-tek:
+    build: .
+    container_name: ias-uav-tek
+    image: ias-uav-tek:latest
+    ports:
+      - "8080:80"
+    restart: unless-stopped
