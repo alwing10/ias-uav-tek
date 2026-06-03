@@ -7,6 +7,7 @@ import { Button } from '@/components/common/Button';
 import { Modal } from '@/components/common/Modal';
 import { SeverityBadge, VerificationBadge } from '@/components/common/StatusBadge';
 import { useIncidents } from '@/store/incidents';
+import { useLiveData } from '@/store/liveData';
 import { useAuth } from '@/store/auth';
 import {
   SEVERITY_LABEL,
@@ -18,7 +19,9 @@ import { formatDateTime, nf } from '@/utils/format';
 import { REGIONS } from '@/mocks/regions';
 
 export function VerificationPage() {
-  const { incidents, bulkVerify, updateAttributes } = useIncidents();
+  const { incidents: stored, bulkVerify, updateAttributes } = useIncidents();
+  const live = useLiveData((s) => s.incidents);
+  const incidents = useMemo(() => [...live, ...stored], [live, stored]);
   const user = useAuth((s) => s.user);
   const queue = useMemo(
     () => incidents.filter((i) => i.verified === 'pending' || i.verified === 'new'),

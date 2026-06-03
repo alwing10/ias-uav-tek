@@ -23,6 +23,7 @@ import {
   VerificationBadge,
 } from '@/components/common/StatusBadge';
 import { useIncidents } from '@/store/incidents';
+import { useLiveData } from '@/store/liveData';
 import {
   OBJECT_TYPE_GROUP,
   SEVERITY_COLOR,
@@ -45,7 +46,11 @@ const NOW = new Date('2026-05-29T12:00:00Z');
 
 export function DashboardPage() {
   const [period, setPeriod] = useState<(typeof PERIODS)[number]['value']>('year');
-  const incidents = useIncidents((s) => s.incidents);
+  const stored = useIncidents((s) => s.incidents);
+  const live = useLiveData((s) => s.incidents);
+  const liveStatus = useLiveData((s) => s.status);
+  // Объединяем сохранённые и live в один поток. Live идут первыми (свежие сверху).
+  const incidents = useMemo(() => [...live, ...stored], [live, stored]);
 
   const days = PERIODS.find((p) => p.value === period)!.days;
   const from = new Date(NOW.getTime() - days * 24 * 3600_000);
@@ -152,6 +157,20 @@ export function DashboardPage() {
         </div>
       }
     >
+      {live.length > 0 && (
+        <div className="mb-3 flex items-center gap-2 rounded-card border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+          <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+          <b>Live-режим активен:</b> подгружено <b>{live.length}</b> реальных событий из открытых
+          источников (GDELT 2.0 + RSS российских СМИ). Обновление каждые 10 минут.
+        </div>
+      )}
+      {live.length === 0 && liveStatus === 'error' && (
+        <div className="mb-3 flex items-center gap-2 rounded-card border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+          <span className="flex h-2 w-2 rounded-full bg-orange-500" />
+          Не удалось загрузить реальные данные из источников. Показаны только демо-данные.
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <KpiCard
           label="Всего инцидентов"
@@ -319,7 +338,14 @@ export function DashboardPage() {
                 }`}
               >
                 <td className="px-3 py-2 font-semibold text-brand-700">
-                  <Link to={`/incidents/${i.id}`}>{i.id}</Link>
+                  <Link to={`/incidents/${i.id}`} className="inline-flex items-center gap-1">
+                    {i.id}
+                    {i.id.startsWith('LIVE-') && (
+                      <span className="rounded bg-emerald-100 px-1 text-[9px] font-semibold uppercase text-emerald-700">
+                        live
+                      </span>
+                    )}
+                  </Link>
                 </td>
                 <td className="px-3 py-2">{formatDate(i.datetime)}</td>
                 <td className="px-3 py-2">{REGIONS.find((r) => r.code === i.regionCode)?.shortName}</td>

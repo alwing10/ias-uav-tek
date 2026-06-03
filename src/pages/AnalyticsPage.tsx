@@ -23,6 +23,7 @@ import { Button } from '@/components/common/Button';
 import { Tabs } from '@/components/common/Tabs';
 import { KpiCard } from '@/components/common/KpiCard';
 import { useIncidents } from '@/store/incidents';
+import { useLiveData } from '@/store/liveData';
 import {
   OBJECT_TYPE_GROUP,
   SCENARIOS,
@@ -37,7 +38,9 @@ import { REGIONS } from '@/mocks/regions';
 type SubTab = 'dynamics' | 'structure' | 'geography' | 'forecast';
 
 export function AnalyticsPage() {
-  const incidents = useIncidents((s) => s.incidents);
+  const stored = useIncidents((s) => s.incidents);
+  const live = useLiveData((s) => s.incidents);
+  const incidents = useMemo(() => [...live, ...stored], [live, stored]);
   const [tab, setTab] = useState<SubTab>('dynamics');
 
   return (

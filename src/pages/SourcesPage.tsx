@@ -8,6 +8,7 @@ import { Tabs } from '@/components/common/Tabs';
 import { SOURCES } from '@/mocks/sources';
 import type { DataSource } from '@/types/domain';
 import { relativeMin, nf } from '@/utils/format';
+import { useLiveData } from '@/store/liveData';
 
 type SourceTab = 'all' | 'media' | 'telegram' | 'rss' | 'api';
 
@@ -23,6 +24,12 @@ export function SourcesPage() {
   const [tab, setTab] = useState<SourceTab>('all');
   const [sources, setSources] = useState<DataSource[]>(SOURCES);
   const [logs, setLogs] = useState<LogEntry[]>(() => generateLogs());
+  const liveStatus = useLiveData((s) => s.status);
+  const liveLast = useLiveData((s) => s.lastUpdate);
+  const liveCount = useLiveData((s) => s.incidents.length);
+  const liveDiag = useLiveData((s) => s.diagnostics);
+  const liveErr = useLiveData((s) => s.errorMessage);
+  const refreshLive = useLiveData((s) => s.refresh);
 
   // Эмуляция «реального времени»: новая запись каждые 3 секунды
   useEffect(() => {
@@ -83,6 +90,62 @@ export function SourcesPage() {
         <KpiCard label="Инциденты выявлены" value={nf(stats.incidents)} />
         <KpiCard label="Ошибок парсеров" value={nf(stats.errors)} accent={stats.errors > 0 ? 'critical' : 'default'} />
       </div>
+
+      <Card
+        className="mt-4"
+        title="Подключение к открытым источникам (live)"
+        subtitle="GDELT 2.0 Doc API + RSS российских СМИ (РИА, ТАСС, РБК). Обновление каждые 10 минут."
+        toolbar={
+          <Button size="sm" variant="outline" onClick={() => void refreshLive()}>
+            Обновить
+          </Button>
+        }
+      >
+        <div className="grid grid-cols-2 gap-4 text-xs md:grid-cols-4">
+          <div>
+            <div className="text-[10px] font-semibold uppercase text-ink-muted">GDELT 2.0</div>
+            <div className="mt-1 flex items-center gap-1.5">
+              <span className={`h-2 w-2 rounded-full ${liveDiag.gdeltOk ? 'bg-emerald-500' : 'bg-red-500'}`} />
+              <span className="text-ink">{liveDiag.gdeltOk ? `OK · ${liveDiag.gdeltCount} событий` : 'Недоступен'}</span>
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase text-ink-muted">RSS rss2json</div>
+            <div className="mt-1 flex items-center gap-1.5">
+              <span className={`h-2 w-2 rounded-full ${liveDiag.rssOk ? 'bg-emerald-500' : 'bg-red-500'}`} />
+              <span className="text-ink">{liveDiag.rssOk ? `OK · ${liveDiag.rssCount} событий` : 'Недоступен'}</span>
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase text-ink-muted">Всего live-событий</div>
+            <div className="mt-1 text-base font-bold text-brand-700">{liveCount}</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase text-ink-muted">Последнее обновление</div>
+            <div className="mt-1 text-ink">
+              {liveLast ? relativeMin(liveLast) : 'не выполнялось'}{' '}
+              <span
+                className={`ml-1 inline-flex rounded-full px-2 py-0.5 text-[9px] font-semibold ${
+                  liveStatus === 'ok'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : liveStatus === 'loading'
+                      ? 'bg-orange-100 text-orange-700'
+                      : liveStatus === 'error'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-zinc-200 text-zinc-700'
+                }`}
+              >
+                {liveStatus}
+              </span>
+            </div>
+          </div>
+        </div>
+        {liveErr && (
+          <div className="mt-3 rounded border border-orange-200 bg-orange-50 px-3 py-2 text-[11px] text-orange-800">
+            <b>Диагностика:</b> {liveErr}
+          </div>
+        )}
+      </Card>
 
       <Tabs
         className="mt-4"

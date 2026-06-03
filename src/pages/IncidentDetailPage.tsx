@@ -13,6 +13,7 @@ import {
   VerificationBadge,
 } from '@/components/common/StatusBadge';
 import { useIncidents } from '@/store/incidents';
+import { useLiveData } from '@/store/liveData';
 import {
   OBJECT_TYPE_GROUP,
   OBJECT_TYPE_LABEL,
@@ -31,7 +32,9 @@ type DetailTab = 'overview' | 'sources' | 'attrs' | 'history' | 'related';
 export function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { incidents, updateAttributes } = useIncidents();
+  const { incidents: stored, updateAttributes } = useIncidents();
+  const live = useLiveData((s) => s.incidents);
+  const incidents = useMemo(() => [...live, ...stored], [live, stored]);
   const incident = incidents.find((i) => i.id === id);
   const user = useAuth((s) => s.user);
   const [tab, setTab] = useState<DetailTab>('overview');
@@ -228,7 +231,20 @@ export function IncidentDetailPage() {
               <div className="rounded bg-surface p-3 font-mono text-[11px] leading-relaxed text-ink">
                 {incident.sources[0]?.text || incident.description}
               </div>
-              <button className="mt-2 text-xs text-brand-600 hover:underline">Открыть полную версию →</button>
+              {incident.sources[0]?.url ? (
+                <a
+                  href={incident.sources[0].url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-block text-xs text-brand-600 hover:underline"
+                >
+                  Открыть оригинал в новом окне →
+                </a>
+              ) : (
+                <button className="mt-2 text-xs text-brand-600 hover:underline">
+                  Открыть полную версию →
+                </button>
+              )}
             </Card>
           </div>
         </div>

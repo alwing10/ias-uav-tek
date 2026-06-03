@@ -10,14 +10,17 @@ import {
   List,
   Map,
   Radio,
+  RefreshCw,
   ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '@/store/auth';
+import { useLiveData } from '@/store/liveData';
 import type { Role } from '@/types/domain';
 import { ROLE_LABEL } from '@/types/domain';
 import { canSee } from '@/utils/rbac';
 import { cn } from '@/utils/cn';
-import { useMemo, useState, useEffect } from 'react';
+import { relativeMin } from '@/utils/format';
+import { useMemo } from 'react';
 
 const NAV: Array<{ to: string; label: string; icon: typeof Home; roles: Role[] }> = [
   { to: '/dashboard', label: 'Главная', icon: Home, roles: ['analyst'] },
@@ -35,12 +38,28 @@ const NAV: Array<{ to: string; label: string; icon: typeof Home; roles: Role[] }
 export function Sidebar() {
   const { user, switchRole } = useAuth();
   const visible = useMemo(() => NAV.filter((n) => canSee(user?.role, n.roles)), [user?.role]);
-  const [tick, setTick] = useState(2);
+  const liveStatus = useLiveData((s) => s.status);
+  const liveLast = useLiveData((s) => s.lastUpdate);
+  const liveCount = useLiveData((s) => s.incidents.length);
+  const refresh = useLiveData((s) => s.refresh);
 
-  useEffect(() => {
-    const i = setInterval(() => setTick((t) => (t > 10 ? 1 : t + 1)), 60_000);
-    return () => clearInterval(i);
-  }, []);
+  const statusDot =
+    liveStatus === 'ok'
+      ? 'bg-emerald-500'
+      : liveStatus === 'loading'
+        ? 'bg-orange-500 animate-pulse'
+        : liveStatus === 'error'
+          ? 'bg-red-600'
+          : 'bg-zinc-400';
+
+  const statusLabel =
+    liveStatus === 'ok'
+      ? 'Активен'
+      : liveStatus === 'loading'
+        ? 'Сбор…'
+        : liveStatus === 'error'
+          ? 'Ошибка'
+          : 'Готов';
 
   return (
     <aside className="fixed left-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] w-[220px] flex-col border-r border-surface-border bg-white">
@@ -83,11 +102,21 @@ export function Sidebar() {
       <div className="mx-3 mb-3 rounded-card bg-brand-50 p-3">
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-semibold text-brand-700">Сбор данных</span>
-          <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+          <span className={cn('flex h-2 w-2 rounded-full', statusDot)} />
         </div>
         <div className="mt-1 flex items-center gap-1 text-[10px] text-ink-muted">
           <Activity className="h-3 w-3" />
-          Последний цикл: {tick} мин назад
+          {statusLabel} • {liveCount} live
+        </div>
+        <div className="mt-1 flex items-center justify-between text-[10px] text-ink-muted">
+          <span>{liveLast ? `Цикл: ${relativeMin(liveLast)}` : 'Ещё не запускался'}</span>
+          <button
+            onClick={() => void refresh()}
+            className="rounded p-0.5 text-brand-600 hover:bg-white"
+            title="Обновить сейчас"
+          >
+            <RefreshCw className={cn('h-3 w-3', liveStatus === 'loading' && 'animate-spin')} />
+          </button>
         </div>
       </div>
     </aside>

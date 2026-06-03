@@ -14,6 +14,7 @@ import {
 import { CategoryBadge } from '@/components/common/CategoryBadge';
 import { REGIONS } from '@/mocks/regions';
 import { useIncidents } from '@/store/incidents';
+import { useLiveData } from '@/store/liveData';
 import {
   OBJECT_TYPE_LABEL,
   SEVERITY_LABEL,
@@ -50,7 +51,9 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
 type SortKey = 'datetime' | 'damage' | 'severity' | 'object' | 'region';
 
 export function IncidentsPage() {
-  const { incidents, addIncident } = useIncidents();
+  const { incidents: stored, addIncident } = useIncidents();
+  const live = useLiveData((s) => s.incidents);
+  const incidents = useMemo(() => [...live, ...stored], [live, stored]);
   const [period, setPeriod] = useState<{ from: string; to: string }>({ from: '2026-01-01', to: '2026-05-29' });
   const [regions, setRegions] = useState<string[]>([]);
   const [categories, setCategories] = useState<ObjectCategory[]>([]);
@@ -263,7 +266,14 @@ export function IncidentsPage() {
                 >
                   {columns.find((c) => c.key === 'idx')?.visible && (
                     <td className="px-3 py-2 font-semibold text-brand-700">
-                      <Link to={`/incidents/${i.id}`}>{i.id}</Link>
+                      <Link to={`/incidents/${i.id}`} className="inline-flex items-center gap-1">
+                        {i.id}
+                        {i.id.startsWith('LIVE-') && (
+                          <span className="rounded bg-emerald-100 px-1 text-[9px] font-semibold uppercase text-emerald-700">
+                            live
+                          </span>
+                        )}
+                      </Link>
                     </td>
                   )}
                   {columns.find((c) => c.key === 'datetime')?.visible && <td className="px-3 py-2 text-ink-muted">{formatDateTime(i.datetime)}</td>}

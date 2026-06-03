@@ -1,13 +1,13 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet.markercluster';
 import 'leaflet.heat';
 import { Link } from 'react-router-dom';
-import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { MultiSelect } from '@/components/common/MultiSelect';
-import { useIncidents } from '@/store/incidents';
+import { useIncidents, type Incident } from '@/store/incidents';
+import { useLiveData } from '@/store/liveData';
 import { REGIONS } from '@/mocks/regions';
 import {
   OBJECT_TYPE_LABEL,
@@ -19,12 +19,21 @@ import {
   type UavType,
   type VerificationStatus,
 } from '@/types/domain';
-import { formatDate } from '@/utils/format';
+import { formatDate, relativeMin } from '@/utils/format';
+import { RefreshCw, Wifi } from 'lucide-react';
 
 type MapMode = 'markers' | 'clusters' | 'heatmap';
 
 export function MapPage() {
-  const incidents = useIncidents((s) => s.incidents);
+  const stored = useIncidents((s) => s.incidents);
+  const liveIncidents = useLiveData((s) => s.incidents);
+  const liveStatus = useLiveData((s) => s.status);
+  const lastUpdate = useLiveData((s) => s.lastUpdate);
+  const refresh = useLiveData((s) => s.refresh);
+
+  // Объединяем сохранённые (мок + ручные) и live
+  const incidents = useMemo(() => [...liveIncidents, ...stored], [liveIncidents, stored]);
+
   const [mode, setMode] = useState<MapMode>('markers');
   const [period, setPeriod] = useState<{ from: string; to: string }>({ from: '2026-01-01', to: '2026-05-29' });
   const [regions, setRegions] = useState<string[]>([]);
@@ -46,7 +55,7 @@ export function MapPage() {
   const filtered = useMemo(() => {
     return incidents.filter((i) => {
       const dt = new Date(i.datetime);
-      if (dt < new Date(appliedFilters.period.from) || dt > new Date(appliedFilters.period.to)) return false;
+      if (dt < new Date(appliedFilters.period.from) || dt > new Date(appliedFilters.period.to + 'T23:59:59')) return false;
       if (appliedFilters.regions.length && !appliedFilters.regions.includes(i.regionCode)) return false;
       if (appliedFilters.objectTypes.length && !appliedFilters.objectTypes.includes(i.objectType)) return false;
       if (appliedFilters.uavTypes.length && !appliedFilters.uavTypes.includes(i.uavType)) return false;
@@ -61,7 +70,8 @@ export function MapPage() {
     setAppliedFilters({ period, regions, objectTypes, uavTypes, severities, verifications, damageRange });
   }
   function reset() {
-    setPeriod({ from: '2026-01-01', to: '2026-05-29' });
+    const def = { from: '2026-01-01', to: '2026-05-29' };
+    setPeriod(def);
     setRegions([]);
     setObjectTypes([]);
     setUavTypes([]);
@@ -69,7 +79,7 @@ export function MapPage() {
     setVerifications([]);
     setDamageRange([0, 10]);
     setAppliedFilters({
-      period: { from: '2026-01-01', to: '2026-05-29' },
+      period: def,
       regions: [],
       objectTypes: [],
       uavTypes: [],
@@ -80,11 +90,16 @@ export function MapPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">
+    <div className="flex h-[calc(100vh-56px)] overflow-hidden">
       {/* Левая панель фильтров */}
       <aside className="w-[280px] shrink-0 overflow-y-auto border-r border-surface-border bg-white p-4">
         <h2 className="text-sm font-semibold text-ink">Фильтры</h2>
-        <p className="mt-0.5 text-[10px] text-ink-muted">Найдено: {filtered.length}</p>
+        <p className="mt-0.5 text-[10px] text-ink-muted">
+          Найдено: {filtered.length}
+          {liveIncidents.length > 0 && (
+            <span className="ml-2 text-emerald-600">• live: {liveIncidents.length}</span>
+          )}
+        </p>
 
         <div className="mt-4 space-y-3">
           <div>
@@ -182,22 +197,44 @@ export function MapPage() {
             </Button>
           </div>
         </div>
+
+        <div className="mt-4 rounded-card border border-surface-border bg-surface p-3 text-[11px]">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 font-semibold text-ink">
+              <Wifi className={`h-3.5 w-3.5 ${liveStatus === 'ok' ? 'text-emerald-600' : liveStatus === 'loading' ? 'text-orange-500' : 'text-red-600'}`} />
+              Live-источники
+            </span>
+            <button onClick={() => refresh()} className="text-brand-600 hover:underline">
+              <RefreshCw className="h-3 w-3" />
+            </button>
+          </div>
+          <div className="mt-1 text-[10px] text-ink-muted">
+            Загружено: {liveIncidents.length} событий
+          </div>
+          {lastUpdate && (
+            <div className="mt-0.5 text-[10px] text-ink-muted">
+              Обновлено: {relativeMin(lastUpdate)}
+            </div>
+          )}
+        </div>
       </aside>
 
-      {/* Карта */}
-      <div className="relative flex-1">
+      {/* Карта — основная зона. КЛЮЧЕВО: задаём явную высоту через flex + style */}
+      <div className="relative flex-1" style={{ minHeight: 0 }}>
         <MapContainer
           center={[54, 40]}
           zoom={5}
           minZoom={3}
-          className="h-full w-full"
-          preferCanvas
+          maxZoom={14}
+          style={{ height: '100%', width: '100%' }}
+          worldCopyJump
         >
           <TileLayer
-            attribution="© OpenStreetMap"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <ModeLayer mode={mode} incidents={filtered} />
+          <InvalidateSize />
         </MapContainer>
 
         {/* Переключатель режимов */}
@@ -231,8 +268,8 @@ export function MapPage() {
           <h2 className="text-sm font-semibold text-ink">Видимые инциденты</h2>
           <p className="mt-0.5 text-[11px] text-ink-muted">Найдено: {filtered.length} • сорт: дата ↓</p>
         </div>
-        <div className="scrollbar-thin h-[calc(100vh-3.5rem-66px)] overflow-y-auto p-2">
-          {filtered.slice(0, 60).map((i) => (
+        <div className="scrollbar-thin overflow-y-auto p-2" style={{ height: 'calc(100vh - 56px - 66px)' }}>
+          {filtered.slice(0, 80).map((i) => (
             <Link
               key={i.id}
               to={`/incidents/${i.id}`}
@@ -244,9 +281,16 @@ export function MapPage() {
                   style={{ background: SEVERITY_COLOR[i.severity] }}
                 />
                 <div className="flex-1">
-                  <div className="text-[11px] font-semibold text-brand-700">{i.id}</div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[11px] font-semibold text-brand-700">{i.id}</span>
+                    {i.id.startsWith('LIVE-') && (
+                      <span className="rounded bg-emerald-100 px-1 text-[9px] font-semibold uppercase text-emerald-700">
+                        live
+                      </span>
+                    )}
+                  </div>
                   <div className="truncate text-[11px] text-ink">
-                    {REGIONS.find((r) => r.code === i.regionCode)?.shortName}, {i.objectName}
+                    {REGIONS.find((r) => r.code === i.regionCode)?.shortName || i.region}, {i.objectName}
                   </div>
                   <div className="mt-0.5 text-[10px] text-ink-muted">
                     {formatDate(i.datetime)} • {SEVERITY_LABEL[i.severity]}
@@ -261,8 +305,20 @@ export function MapPage() {
   );
 }
 
-// Подложка-слой: маркеры / кластеры / heatmap
-function ModeLayer({ mode, incidents }: { mode: MapMode; incidents: ReturnType<typeof useIncidents>['incidents'] }) {
+// Хук: после монтирования сообщить Leaflet, что размер изменился (фикс пустой карты)
+function InvalidateSize() {
+  const map = useMap();
+  useEffect(() => {
+    const t = setTimeout(() => {
+      map.invalidateSize();
+    }, 100);
+    return () => clearTimeout(t);
+  }, [map]);
+  return null;
+}
+
+// Слой с маркерами / кластерами / тепловой картой
+function ModeLayer({ mode, incidents }: { mode: MapMode; incidents: Incident[] }) {
   const map = useMap();
   const layerRef = useRef<L.Layer | null>(null);
 
@@ -273,19 +329,24 @@ function ModeLayer({ mode, incidents }: { mode: MapMode; incidents: ReturnType<t
     }
 
     if (mode === 'heatmap') {
-      const heat = (L as unknown as { heatLayer: (latlngs: [number, number, number][], opts: object) => L.Layer }).heatLayer(
+      const heatLayer = (L as unknown as {
+        heatLayer: (latlngs: [number, number, number][], opts: object) => L.Layer;
+      }).heatLayer(
         incidents.map((i) => [i.coordinates.lat, i.coordinates.lon, 0.4 + i.damage * 0.06] as [number, number, number]),
         { radius: 25, blur: 18, max: 1.4 },
       );
-      heat.addTo(map);
-      layerRef.current = heat;
+      heatLayer.addTo(map);
+      layerRef.current = heatLayer;
       return;
     }
 
     if (mode === 'clusters') {
-      const group = (L as unknown as { markerClusterGroup: (opts: object) => L.FeatureGroup & { addLayer: (l: L.Layer) => void } }).markerClusterGroup({
+      const group = (L as unknown as {
+        markerClusterGroup: (opts: object) => L.FeatureGroup & { addLayer: (l: L.Layer) => void };
+      }).markerClusterGroup({
         chunkedLoading: true,
         maxClusterRadius: 50,
+        showCoverageOnHover: false,
       });
       incidents.forEach((i) => {
         const m = L.circleMarker([i.coordinates.lat, i.coordinates.lon], {
@@ -293,17 +354,17 @@ function ModeLayer({ mode, incidents }: { mode: MapMode; incidents: ReturnType<t
           color: '#fff',
           weight: 1,
           fillColor: SEVERITY_COLOR[i.severity],
-          fillOpacity: 0.85,
+          fillOpacity: 0.9,
         });
         m.bindPopup(popupHtml(i));
         group.addLayer(m);
       });
-      map.addLayer(group);
-      layerRef.current = group;
+      map.addLayer(group as unknown as L.Layer);
+      layerRef.current = group as unknown as L.Layer;
       return;
     }
 
-    // Маркеры
+    // Маркеры (default)
     const fg = L.featureGroup();
     incidents.forEach((i) => {
       const m = L.circleMarker([i.coordinates.lat, i.coordinates.lon], {
@@ -311,7 +372,7 @@ function ModeLayer({ mode, incidents }: { mode: MapMode; incidents: ReturnType<t
         color: '#fff',
         weight: 1,
         fillColor: SEVERITY_COLOR[i.severity],
-        fillOpacity: 0.85,
+        fillOpacity: 0.9,
       });
       m.bindPopup(popupHtml(i));
       fg.addLayer(m);
@@ -323,15 +384,24 @@ function ModeLayer({ mode, incidents }: { mode: MapMode; incidents: ReturnType<t
   return null;
 }
 
-function popupHtml(i: any) {
+function popupHtml(i: Incident): string {
+  const isLive = i.id.startsWith('LIVE-');
+  const url = (i as unknown as { sourceUrl?: string }).sourceUrl;
   return `
-    <div style="font-family:Inter, sans-serif; min-width: 200px">
-      <div style="font-weight:700; color:#1E4D8B">${i.id}</div>
-      <div style="font-size: 11px; margin-top: 4px"><b>Объект:</b> ${i.objectName}</div>
-      <div style="font-size: 11px"><b>Регион:</b> ${i.region}</div>
-      <div style="font-size: 11px"><b>БПЛА:</b> ${UAV_LABEL[i.uavType as UavType]}</div>
-      <div style="font-size: 11px"><b>Тяжесть:</b> ${SEVERITY_LABEL[i.severity as Severity]}</div>
-      <a href="/incidents/${i.id}" style="display:inline-block; margin-top:6px; color:#1E4D8B; font-weight:600; font-size: 11px">Открыть карточку →</a>
+    <div style="font-family:Inter, sans-serif; min-width: 220px; max-width: 280px">
+      <div style="font-weight:700; color:#1E4D8B">${i.id}${isLive ? ' <span style="background:#D1FAE5;color:#065F46;padding:1px 4px;border-radius:3px;font-size:10px">LIVE</span>' : ''}</div>
+      <div style="font-size: 11px; margin-top: 4px"><b>Объект:</b> ${escapeHtml(i.objectName)}</div>
+      <div style="font-size: 11px"><b>Регион:</b> ${escapeHtml(i.region)}</div>
+      <div style="font-size: 11px"><b>БПЛА:</b> ${UAV_LABEL[i.uavType]}</div>
+      <div style="font-size: 11px"><b>Тяжесть:</b> ${SEVERITY_LABEL[i.severity]}</div>
+      <div style="font-size: 11px"><b>Дата:</b> ${new Date(i.datetime).toLocaleString('ru-RU')}</div>
+      ${url ? `<a href="${url}" target="_blank" rel="noopener" style="display:inline-block; margin-top:6px; color:#1E4D8B; font-size:11px">Источник →</a>` : ''}
+      <br/>
+      <a href="#/incidents/${i.id}" style="display:inline-block; margin-top:4px; color:#1E4D8B; font-weight:600; font-size: 11px">Открыть карточку →</a>
     </div>
   `;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 }
