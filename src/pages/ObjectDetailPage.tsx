@@ -45,7 +45,12 @@ export function ObjectDetailPage() {
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <Card className="lg:col-span-2" title="Карта расположения">
           <div className="h-72 overflow-hidden rounded">
-            <MapContainer center={[obj.coordinates.lat, obj.coordinates.lon]} zoom={9} className="h-full w-full">
+            <MapContainer
+              center={[obj.coordinates.lat, obj.coordinates.lon]}
+              zoom={9}
+              className="h-full w-full"
+              attributionControl={false}
+            >
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
               <CircleMarker
                 center={[obj.coordinates.lat, obj.coordinates.lon]}

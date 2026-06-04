@@ -163,7 +163,9 @@ export function IncidentsPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => exportIncidentsPDF(sorted, 'Реестр инцидентов')}
+              onClick={() => {
+                void exportIncidentsPDF(sorted, 'Реестр инцидентов');
+              }}
               icon={<FileText className="h-3.5 w-3.5" />}
               className="rounded-l-none border-l-0"
             >

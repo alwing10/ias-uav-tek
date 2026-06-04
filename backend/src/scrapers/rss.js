@@ -1,35 +1,75 @@
 // Парсер RSS-фидов официальных и крупных СМИ.
 // Отличие от фронта (rss2json.com) — здесь у нас нет CORS-проблемы,
 // поэтому ходим в RSS напрямую через библиотеку rss-parser.
+//
+// ВАЖНЫЙ источник — **Google News RSS** с поисковыми запросами.
+// Возвращает агрегированные новости от десятков СМИ по конкретной теме.
 
 import Parser from 'rss-parser';
 import { parseToIncident } from '../parser.js';
 
+// Google News RSS поиск — формат:
+//   https://news.google.com/rss/search?q=<query>&hl=ru&gl=RU&ceid=RU:ru
+// Возвращает топ-100 новостей за последние ~24 ч по запросу. Без авторизации.
+function gnews(query, prefix) {
+  return {
+    name: `Google News · ${query}`,
+    url: `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=ru&gl=RU&ceid=RU:ru`,
+    prefix,
+  };
+}
+
 const FEEDS = [
+  // ===== Google News — главный поставщик реал-тайм новостей =====
+  gnews('БПЛА НПЗ Россия', 'GN1'),
+  gnews('беспилотник нефтебаза', 'GN2'),
+  gnews('дрон подстанция атака', 'GN3'),
+  gnews('FPV нефтепровод', 'GN4'),
+  gnews('Шахед нефтеперерабатывающий завод', 'GN5'),
+  gnews('атака БПЛА Белгород', 'GN6'),
+  gnews('атака БПЛА Краснодар', 'GN7'),
+  gnews('атака БПЛА Ростов', 'GN8'),
+
+  // ===== Прямые RSS крупных СМИ =====
   { name: 'РИА Новости', url: 'https://ria.ru/export/rss2/index.xml', prefix: 'RIA' },
   { name: 'ТАСС', url: 'https://tass.ru/rss/v2.xml', prefix: 'TASS' },
   { name: 'Lenta.ru', url: 'https://lenta.ru/rss/news', prefix: 'LENTA' },
-  { name: 'РБК', url: 'https://rssexport.rbc.ru/rbcnews/news/30/full.rss', prefix: 'RBC' },
-  { name: 'Минобороны РФ', url: 'https://function.mil.ru/rss_feed/news.htm', prefix: 'MIL' },
-  { name: 'МЧС России', url: 'https://www.mchs.gov.ru/rss/news.xml', prefix: 'MCHS' },
+  { name: 'Коммерсант', url: 'https://www.kommersant.ru/RSS/news.xml', prefix: 'KOMM' },
+  { name: 'Интерфакс', url: 'https://www.interfax.ru/rss.asp', prefix: 'IF' },
+  { name: 'Газета.ру', url: 'https://www.gazeta.ru/export/rss/lenta.xml', prefix: 'GAZ' },
+
+  // ===== Официальные источники =====
+  // НОТА: function.mil.ru DNS не резолвится с Render, используем основной mil.ru
+  { name: 'Минобороны РФ', url: 'https://мультимедиа.минобороны.рф/multimedia/news/rss/news.xml', prefix: 'MIL' },
+  { name: 'МЧС России', url: 'https://www.mchs.gov.ru/dop/info/rss.xml', prefix: 'MCHS' },
 ];
 
 const parser = new Parser({
-  timeout: 15_000,
-  headers: { 'User-Agent': 'IAS-UAV-TEK-Bot/1.0 (academic research)' },
+  timeout: 25_000, // 25 секунд — некоторые российские RSS медленные
+  headers: {
+    'User-Agent':
+      'Mozilla/5.0 (compatible; IAS-UAV-TEK-Bot/1.0; academic research; +https://github.com/alwing10/ias-uav-tek)',
+    Accept: 'application/rss+xml, application/xml, text/xml, */*',
+    'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
+  },
 });
 
-// Не пропускаем явно нерелевантные новости — экономим CPU на парсинге
-const RELEVANT_KEYWORDS = /бпла|беспилотн|дрон|fpv|шахед|герань|loitering|пвo|нпз|нефтебаз|нефтепровод|газопровод|тэц|тэс|подстанц|лэп/i;
+// Не пропускаем явно нерелевантные новости — экономим CPU на парсинге.
+// Google News-фиды уже сами фильтруют по запросу, но добавим страховку.
+const RELEVANT_KEYWORDS =
+  /бпла|беспилотн|дрон|fpv|шахед|герань|loitering|пвo|пво|нпз|нефтебаз|нефтепровод|нефтехранил|газопровод|газокомпрессор|тэц|тэс|грэс|подстанц|лэп|электростанц|нефтеперераб/i;
 
 export async function scrapeRss() {
   const incidents = [];
   const errors = [];
 
-  for (const feed of FEEDS) {
-    try {
+  // Параллельные запросы — быстрее в 5-10 раз, чем последовательные
+  // (всё равно у нас разные домены, не DDOS)
+  const results = await Promise.allSettled(
+    FEEDS.map(async (feed) => {
       const parsed = await parser.parseURL(feed.url);
-      for (const item of (parsed.items ?? []).slice(0, 50)) {
+      let added = 0;
+      for (const item of (parsed.items ?? []).slice(0, 60)) {
         const fullText = `${item.title ?? ''} ${item.contentSnippet ?? item.content ?? ''}`;
         if (!RELEVANT_KEYWORDS.test(fullText)) continue;
 
@@ -41,14 +81,31 @@ export async function scrapeRss() {
           sourceName: feed.name,
           sourcePrefix: feed.prefix,
         });
-        if (inc) incidents.push(inc);
+        if (inc) {
+          incidents.push(inc);
+          added += 1;
+        }
       }
-    } catch (e) {
-      errors.push(`${feed.name}: ${e.message}`);
+      return { feed: feed.name, total: parsed.items?.length ?? 0, added };
+    }),
+  );
+
+  let ok = 0;
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (r.status === 'fulfilled') {
+      ok += 1;
+      if (r.value.added > 0) {
+        console.log(`[rss] ${r.value.feed}: ${r.value.total} новостей, ${r.value.added} релевантных`);
+      }
+    } else {
+      errors.push(`${FEEDS[i].name}: ${r.reason?.message || r.reason}`);
     }
   }
 
-  console.log(`[rss] собрано ${incidents.length} инцидентов из ${FEEDS.length} фидов, ошибок: ${errors.length}`);
-  if (errors.length) console.log(`[rss] ошибки: ${errors.slice(0, 3).join(' | ')}`);
+  console.log(
+    `[rss] собрано ${incidents.length} инцидентов из ${ok}/${FEEDS.length} фидов, ошибок: ${errors.length}`,
+  );
+  if (errors.length) console.log(`[rss] ошибки: ${errors.slice(0, 5).join(' | ')}`);
   return incidents;
 }

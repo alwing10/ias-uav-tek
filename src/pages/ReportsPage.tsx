@@ -103,7 +103,7 @@ export function ReportsPage() {
   }, [filtered]);
 
   function generate() {
-    exportAnalyticReport(
+    void exportAnalyticReport(
       {
         title: 'АНАЛИТИЧЕСКИЙ ОТЧЁТ',
         period: `${formatDate(config.period.from)} – ${formatDate(config.period.to)}`,

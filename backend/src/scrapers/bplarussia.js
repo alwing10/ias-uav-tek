@@ -38,8 +38,12 @@ function parseRegionPage(html, regionUrl) {
     '.event-card',
     '.news-item',
     '.post',
+    '.item',
+    '.card',
     '[itemtype*="NewsArticle"]',
     '.feed-item',
+    'main li',
+    'main div',
   ];
 
   for (const sel of selectors) {
@@ -50,20 +54,17 @@ function parseRegionPage(html, regionUrl) {
         $el.find('h1, h2, h3, h4').first().text().trim() ||
         $el.find('a').first().attr('title') ||
         $el.find('a').first().text().trim();
-      if (!title || title.length < 12) return;
+      if (!title || title.length < 12 || title.length > 300) return;
 
-      // Дата
       const dateAttr =
         $el.find('time').attr('datetime') ||
         $el.find('[datetime]').attr('datetime') ||
         $el.find('.date, .time, .published').first().text().trim();
       const publishedAt = parseDate(dateAttr);
 
-      // URL события
       const href = $el.find('a').first().attr('href');
       const url = href ? (href.startsWith('http') ? href : new URL(href, regionUrl).toString()) : regionUrl;
 
-      // Описание
       const description =
         $el.find('.description, .summary, .lead, p').first().text().trim().slice(0, 400) || '';
 
@@ -72,12 +73,19 @@ function parseRegionPage(html, regionUrl) {
     if (events.length > 0) break;
   }
 
-  // Если структуру не угадали — fallback: ищем все ссылки на /event/ или /news/
+  // Универсальный fallback — все ссылки с разумным заголовком
   if (events.length === 0) {
-    $('a[href*="/event/"], a[href*="/news/"]').each((_i, el) => {
+    $('a').each((_i, el) => {
       const title = $(el).text().trim();
       const href = $(el).attr('href');
-      if (title && title.length > 12 && href) {
+      if (
+        title &&
+        title.length > 20 &&
+        title.length < 300 &&
+        href &&
+        // фильтр от навигационных ссылок
+        !/^(главная|регионы|контакты|о проекте|войти|подписка)$/i.test(title)
+      ) {
         events.push({
           title,
           url: href.startsWith('http') ? href : new URL(href, regionUrl).toString(),
@@ -88,7 +96,9 @@ function parseRegionPage(html, regionUrl) {
     });
   }
 
-  return events;
+  // Дедупликация по URL внутри одной страницы
+  const seen = new Set();
+  return events.filter((e) => (seen.has(e.url) ? false : (seen.add(e.url), true)));
 }
 
 function parseDate(s) {
@@ -113,16 +123,32 @@ export async function scrapeBplarussia() {
   const incidents = [];
   const errors = [];
 
-  // Приоритет — приграничные регионы, по ним больше всего событий
+  // Приоритет — приграничные регионы, по ним больше всего событий.
+  // KDA (Краснодар) и CRI (Крым) у них отдают 404 — убрали из списка.
   const targetRegions = REGIONS.filter((r) =>
-    ['BEL', 'KRS', 'BRY', 'VOR', 'RST', 'KDA', 'CRI', 'VGG', 'SAR', 'MOW', 'MOS', 'TUL', 'LIP', 'ORE'].includes(r.code),
+    ['BEL', 'KRS', 'BRY', 'VOR', 'RST', 'VGG', 'SAR', 'MOW', 'MOS', 'TUL', 'LIP', 'ORE'].includes(r.code),
   );
 
   for (const region of targetRegions) {
     try {
       const url = `${BASE}/region/${region.slug}/`;
       const html = await fetchHtml(url);
+
+      // Диагностика: если страница пустая или это SPA-каркас без контента,
+      // в логах будет видно
+      if (html.length < 500) {
+        errors.push(`${region.code}: тонкий ответ (${html.length} байт)`);
+        continue;
+      }
+
       const rawEvents = parseRegionPage(html, url);
+      if (rawEvents.length === 0) {
+        // Логируем первые признаки страницы для диагностики
+        const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+        console.log(
+          `[bplarussia] ${region.code}: 0 событий, title="${titleMatch?.[1] ?? '?'}", html ${html.length}b`,
+        );
+      }
 
       for (const ev of rawEvents.slice(0, 15)) {
         // Принудительно задаём регион из URL — он надёжнее текста

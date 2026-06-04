@@ -26,7 +26,7 @@ import {
 import { useAuth } from '@/store/auth';
 import { hasRole } from '@/utils/rbac';
 import { formatDateTime, formatDate } from '@/utils/format';
-import { exportIncidentsPDF } from '@/utils/exporters';
+import { exportIncidentCardPDF } from '@/utils/exporters';
 
 type DetailTab = 'overview' | 'sources' | 'attrs' | 'history' | 'related';
 
@@ -46,6 +46,7 @@ export function IncidentDetailPage() {
   const [tab, setTab] = useState<DetailTab>('overview');
   const [editOpen, setEditOpen] = useState(false);
   const [reclassOpen, setReclassOpen] = useState(false);
+  const [fullTextOpen, setFullTextOpen] = useState(false);
 
   if (!incident) {
     return (
@@ -102,7 +103,9 @@ export function IncidentDetailPage() {
             <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
-                onClick={() => exportIncidentsPDF([incident], `Карточка инцидента ${incident.id}`, `${incident.id}.pdf`)}
+                onClick={() => {
+                  void exportIncidentCardPDF(incident);
+                }}
                 icon={<FileText className="h-3.5 w-3.5" />}
               >
                 Экспорт PDF
@@ -159,6 +162,7 @@ export function IncidentDetailPage() {
                     zoom={9}
                     scrollWheelZoom={false}
                     className="h-full w-full"
+                    attributionControl={false}
                   >
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     <CircleMarker
@@ -234,23 +238,28 @@ export function IncidentDetailPage() {
               ))}
             </Card>
             <Card title="Исходный текст">
-              <div className="rounded bg-surface p-3 font-mono text-[11px] leading-relaxed text-ink">
+              <div className="rounded bg-surface p-3 font-mono text-[11px] leading-relaxed text-ink line-clamp-6">
                 {incident.sources[0]?.text || incident.description}
               </div>
-              {incident.sources[0]?.url ? (
-                <a
-                  href={incident.sources[0].url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 inline-block text-xs text-brand-600 hover:underline"
+              <div className="mt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setFullTextOpen(true)}
+                  className="text-xs text-brand-600 hover:underline"
                 >
-                  Открыть оригинал в новом окне →
-                </a>
-              ) : (
-                <button className="mt-2 text-xs text-brand-600 hover:underline">
                   Открыть полную версию →
                 </button>
-              )}
+                {incident.sources[0]?.url && (
+                  <a
+                    href={incident.sources[0].url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-brand-600 hover:underline"
+                  >
+                    Источник в новом окне →
+                  </a>
+                )}
+              </div>
             </Card>
           </div>
         </div>
@@ -405,6 +414,45 @@ export function IncidentDetailPage() {
               className="mt-1 w-full rounded border border-surface-border p-2 text-sm"
             />
           </label>
+        </div>
+      </Modal>
+
+      {/* Модал — полный текст инцидента и всех источников */}
+      <Modal
+        open={fullTextOpen}
+        onClose={() => setFullTextOpen(false)}
+        title={`Полная версия — ${incident.id}`}
+        size="lg"
+        footer={
+          <Button variant="outline" onClick={() => setFullTextOpen(false)}>
+            Закрыть
+          </Button>
+        }
+      >
+        <h3 className="text-sm font-semibold text-ink">Описание инцидента</h3>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-ink">{incident.description}</p>
+
+        <h3 className="mt-5 text-sm font-semibold text-ink">Исходные сообщения ({incident.sources.length})</h3>
+        <div className="mt-2 space-y-3">
+          {incident.sources.map((s, i) => (
+            <div key={i} className="rounded border border-surface-border bg-surface p-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-brand-700">{s.name}</span>
+                <span className="text-ink-muted">{s.type} · confidence {s.confidence.toFixed(2)}</span>
+              </div>
+              <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-ink">{s.text}</p>
+              {s.url && (
+                <a
+                  href={s.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-block text-xs text-brand-600 hover:underline"
+                >
+                  Открыть оригинал: {s.url.length > 60 ? s.url.slice(0, 60) + '…' : s.url} →
+                </a>
+              )}
+            </div>
+          ))}
         </div>
       </Modal>
 

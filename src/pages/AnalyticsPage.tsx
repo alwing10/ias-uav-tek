@@ -59,7 +59,13 @@ export function AnalyticsPage() {
           <Button size="sm" variant="outline" icon={<Download className="h-3.5 w-3.5" />} onClick={() => exportIncidentsXLSX(incidents, 'analytics.xlsx')}>
             XLSX
           </Button>
-          <Button size="sm" icon={<Download className="h-3.5 w-3.5" />} onClick={() => exportIncidentsPDF(incidents, 'Аналитический отчёт', 'analytics.pdf')}>
+          <Button
+            size="sm"
+            icon={<Download className="h-3.5 w-3.5" />}
+            onClick={() => {
+              void exportIncidentsPDF(incidents, 'Аналитический отчёт', 'analytics.pdf');
+            }}
+          >
             PDF
           </Button>
         </div>
