@@ -179,7 +179,7 @@ export async function sendTestEmail(email: string): Promise<{ status: string; pr
 
 export interface ScrapeStatus {
   lastRun: string | null;
-  lastStats: { bpl: number; rss: number; new: number; errors: number };
+  lastStats: { bpl: number; rss: number; gdelt: number; new: number; errors: number };
 }
 
 export async function fetchScrapeStatus(): Promise<ScrapeStatus> {
