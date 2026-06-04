@@ -189,3 +189,8 @@ export async function fetchScrapeStatus(): Promise<ScrapeStatus> {
 export async function triggerScrape(): Promise<{ status: string }> {
   return req<{ status: string }>('/api/scrape/run', { method: 'POST' });
 }
+
+/** Удалить старые демо-инциденты (ID начинающиеся с DB-) из БД */
+export async function deleteDemoIncidents(): Promise<{ deleted: number }> {
+  return req<{ deleted: number }>('/api/incidents/demo', { method: 'DELETE' });
+}

@@ -1,6 +1,16 @@
-// Семантический парсер: новостной текст → структура инцидента ТЭК
+// Семантический парсер: новостной текст → структура инцидента ТЭК.
+// Жёсткое требование: должны присутствовать БОТЬ:
+//   (1) ключевые слова про БПЛА (дрон, беспилотник, FPV, Shahed, ...)
+//   (2) ключевые слова про объект ТЭК (НПЗ, нефтебаза, газопровод, ЛЭП, ...)
+// Без них новость НЕ ИНЦИДЕНТ — отбрасывается.
+
 import crypto from 'node:crypto';
 import { detectRegion } from './regions.js';
+
+// ОБЯЗАТЕЛЬНОЕ присутствие в тексте — иначе это не БПЛА-инцидент,
+// а просто общая новость про энергетику.
+const UAV_REQUIRED =
+  /бпла|беспилотн|дрон\b|дроны|дронов|fpv|фпв|шахед|shahed|герань|geran|loitering|kamikaze|unmanned|uav\b|квадрокоптер/i;
 
 const OBJECT_PATTERNS = [
   { type: 'refinery', name: 'НПЗ (по сообщению)', regex: /нпз|нефтеперераб|переработ[а-я]*\s+нефт/i },
@@ -58,6 +68,8 @@ function categoryFor(type) {
  */
 export function parseToIncident({ title, description = '', publishedAt, url, sourceName, sourcePrefix }) {
   const text = `${title} ${description}`;
+  // КРИТИЧНО: в тексте ДОЛЖНЫ быть слова про БПЛА. Иначе это не наш инцидент.
+  if (!UAV_REQUIRED.test(text)) return null;
   const region = detectRegion(text);
   if (!region) return null;
   const obj = detectObject(text);

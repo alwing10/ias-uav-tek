@@ -231,6 +231,15 @@ export function setVerification(id, status, verifiedBy) {
   return getIncident(id);
 }
 
+/**
+ * Удаление демо-инцидентов из БД (старый seed-кодом, ID начинающиеся с DB-).
+ * Используется при переходе с демо-режима на «только реальные данные».
+ */
+export function deleteDemoIncidents() {
+  const result = db.prepare("DELETE FROM incidents WHERE id LIKE 'DB-%'").run();
+  return { deleted: result.changes };
+}
+
 export function statsKpi() {
   const total = db.prepare('SELECT COUNT(*) AS c FROM incidents').get().c;
   const crit = db.prepare("SELECT COUNT(*) AS c FROM incidents WHERE severity='critical'").get().c;

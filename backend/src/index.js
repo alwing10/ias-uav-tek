@@ -20,6 +20,7 @@ import {
   upsertSubscription,
   deleteSubscription,
   getSubscription,
+  deleteDemoIncidents,
 } from './db.js';
 import { seedIfEmpty } from './seed.js';
 import { runAllScrapers, getScrapeStatus } from './scrapers/index.js';
@@ -133,6 +134,19 @@ app.post('/api/audit', (req, res) => {
   res.status(201).json({ id });
 });
 
+// ===== УДАЛЕНИЕ ДЕМО-ДАННЫХ =====
+
+app.delete('/api/incidents/demo', (_req, res) => {
+  const result = deleteDemoIncidents();
+  insertAudit({
+    user: 'admin',
+    role: 'admin',
+    action: 'Удалены демо-инциденты (DB-*)',
+    object: `deleted=${result.deleted}`,
+  });
+  res.json(result);
+});
+
 // ===== СБОР (СКРЕЙПИНГ) =====
 
 app.post('/api/scrape/run', async (_req, res) => {
@@ -196,12 +210,19 @@ app.post('/api/subscriptions/:email/test', async (req, res) => {
 
 // ===== Запуск =====
 
-seedIfEmpty(200);
+// Демо-сид ВЫКЛЮЧЕН по умолчанию. Включается переменной SEED_DEMO=1 в env Render.
+// Прототип работает только с РЕАЛЬНЫМИ данными из скрейперов.
+if (process.env.SEED_DEMO === '1') {
+  console.log('[seed] SEED_DEMO=1 → засеваю демо-инцидентами для презентации UI');
+  seedIfEmpty(200);
+} else {
+  console.log('[seed] пропущен (используются только реальные данные из скрейперов)');
+}
 
-// Запускаем первый сбор через 30 секунд после старта (даём сервису прогреться)
+// Запускаем первый сбор сразу — реальные данные нужны как можно быстрее
 setTimeout(() => {
   runAllScrapers().catch((e) => console.error('[scrape initial]', e));
-}, 30_000);
+}, 5_000);
 
 // Cron: запускать сбор каждые 5 минут
 cron.schedule('*/5 * * * *', () => {

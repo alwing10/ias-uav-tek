@@ -169,20 +169,26 @@ export function DashboardPage() {
         {backendStatus === 'ok' && (
           <div className="flex items-center gap-2 rounded-card border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-700">
             <span className="flex h-2 w-2 rounded-full bg-brand-600" />
-            <b>Backend подключён:</b> {backendIncidents.length} инцидентов из БД (Express + SQLite).
-            Авто-синхронизация каждую минуту.
+            <b>Backend:</b> {backendIncidents.length} реальных инцидентов БПЛА × ТЭК из БД
+            (скрейперы bplarussia + RSS СМИ + Google News + GDELT). Авто-синхр каждую минуту.
+          </div>
+        )}
+        {backendStatus === 'waking' && (
+          <div className="flex items-center gap-2 rounded-card border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+            <span className="flex h-2 w-2 rounded-full bg-orange-500 animate-pulse" />
+            Пробуждение backend на Render… до 60 секунд.
           </div>
         )}
         {live.length > 0 && (
           <div className="flex items-center gap-2 rounded-card border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
             <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
-            <b>Live-источники:</b> {live.length} событий из GDELT + RSS СМИ.
+            Резервный канал (RSS в браузере): +{live.length} событий.
           </div>
         )}
-        {live.length === 0 && liveStatus === 'error' && (
-          <div className="flex items-center gap-2 rounded-card border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
-            <span className="flex h-2 w-2 rounded-full bg-orange-500" />
-            Live-источники недоступны. Показаны только данные из БД и демо.
+        {backendStatus === 'error' && live.length === 0 && liveStatus === 'error' && (
+          <div className="flex items-center gap-2 rounded-card border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+            <span className="flex h-2 w-2 rounded-full bg-red-500" />
+            Все источники реальных данных недоступны. Проверьте подключение к backend и интернет.
           </div>
         )}
       </div>

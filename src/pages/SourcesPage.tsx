@@ -10,7 +10,7 @@ import type { DataSource } from '@/types/domain';
 import { relativeMin, nf } from '@/utils/format';
 import { useLiveData } from '@/store/liveData';
 import { useBackend } from '@/store/backendData';
-import { fetchScrapeStatus, triggerScrape, type ScrapeStatus } from '@/services/backendApi';
+import { fetchScrapeStatus, triggerScrape, deleteDemoIncidents, type ScrapeStatus } from '@/services/backendApi';
 
 type SourceTab = 'all' | 'media' | 'telegram' | 'rss' | 'api';
 
@@ -64,6 +64,17 @@ export function SourcesPage() {
       }, 3000);
     } catch {
       setScrapeBusy(false);
+    }
+  }
+
+  async function clearDemo() {
+    if (!confirm('Удалить все демо-инциденты (DB-*) из БД? Это действие нельзя отменить.')) return;
+    try {
+      const r = await deleteDemoIncidents();
+      alert(`Удалено демо-инцидентов: ${r.deleted}`);
+      void refreshBackend();
+    } catch (e) {
+      alert(`Ошибка: ${(e as Error).message}`);
     }
   }
 
@@ -263,9 +274,14 @@ export function SourcesPage() {
           title="Скрейперы backend (реальный сбор данных)"
           subtitle="Запускаются каждые 5 минут на сервере. Обходят CORS-ограничения через прямые запросы."
           toolbar={
-            <Button size="sm" onClick={manualScrape} disabled={scrapeBusy}>
-              {scrapeBusy ? 'Запущено…' : 'Запустить сбор сейчас'}
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={clearDemo}>
+                Удалить демо (DB-*)
+              </Button>
+              <Button size="sm" onClick={manualScrape} disabled={scrapeBusy}>
+                {scrapeBusy ? 'Запущено…' : 'Запустить сбор сейчас'}
+              </Button>
+            </div>
           }
         >
           <div className="grid grid-cols-2 gap-4 text-xs md:grid-cols-4">

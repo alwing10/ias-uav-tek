@@ -116,6 +116,11 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// КРИТИЧНО: новость считается инцидентом ТЭК × БПЛА ТОЛЬКО если
+// в тексте есть упоминание БПЛА (иначе это просто новость про энергетику).
+const UAV_REQUIRED =
+  /бпла|беспилотн|дрон\b|дроны|дронов|fpv|фпв|шахед|shahed|герань|geran|loitering|kamikaze|unmanned|uav\b|квадрокоптер/i;
+
 function buildIncident(
   title: string,
   description: string,
@@ -124,8 +129,12 @@ function buildIncident(
   sourceUrl: string,
 ): Incident | null {
   const text = `${title} ${description}`;
+  // 1) Обязательное упоминание БПЛА
+  if (!UAV_REQUIRED.test(text)) return null;
+  // 2) Регион РФ
   const regionCode = detectRegion(text);
   if (!regionCode) return null;
+  // 3) Тип объекта ТЭК
   const obj = detectObjectType(text);
   if (!obj) return null;
 

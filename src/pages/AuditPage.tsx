@@ -4,7 +4,8 @@ import { PageContainer } from '@/components/layout/PageContainer';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { Select } from '@/components/common/Select';
-import { AUDIT as MOCK_AUDIT } from '@/mocks/audit';
+// Демо-моки журнала аудита убраны вместе с другой синтетикой —
+// журнал показывает только реальные события с backend.
 import { ROLE_LABEL, type AuditEvent } from '@/types/domain';
 import { formatDateTime, nf, todayISO, daysAgoISO } from '@/utils/format';
 import * as XLSX from 'xlsx';
@@ -27,14 +28,12 @@ export function AuditPage() {
     try {
       if (backendEnabled) {
         const real = await fetchAudit();
-        // Конкатенируем real-логи с мок-историей для демонстрации (real сверху)
-        setEvents([...real, ...MOCK_AUDIT]);
+        setEvents(real);
       } else {
-        setEvents(MOCK_AUDIT);
+        setEvents([]);
       }
     } catch {
-      // Backend не отвечает — показываем хотя бы моки
-      setEvents(MOCK_AUDIT);
+      setEvents([]);
     } finally {
       setLoading(false);
     }
@@ -81,17 +80,13 @@ export function AuditPage() {
     XLSX.writeFile(wb, 'audit.xlsx');
   }
 
-  const realCount = events.filter((e) => !e.id.startsWith('LOG-')).length + events.filter((e) => e.id.length > 8 && !e.id.startsWith('LOG-')).length;
-  // Простой признак "real": все backend-логи имеют id вида LOG-{timestamp}-{rand}
-  const fromBackend = events.filter((e) => /^LOG-\d{10,}/.test(e.id)).length;
-
   return (
     <PageContainer
       title="Журнал аудита"
       subtitle={
         backendEnabled
-          ? `Реальные события из backend (${fromBackend}) + демо-история (${nf(MOCK_AUDIT.length)})`
-          : 'Демо-данные (backend не подключён)'
+          ? `Реальные события из backend: ${nf(events.length)}`
+          : 'Backend не подключён — журнал недоступен'
       }
       toolbar={
         <div className="flex gap-1">
@@ -173,34 +168,19 @@ export function AuditPage() {
               <th className="px-3 py-2 text-left font-semibold">Действие</th>
               <th className="px-3 py-2 text-left font-semibold">Объект</th>
               <th className="px-3 py-2 text-left font-semibold">IP</th>
-              <th className="px-3 py-2 text-left font-semibold">Источник</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.slice(0, 300).map((a, idx) => {
-              const isReal = /^LOG-\d{10,}/.test(a.id);
-              return (
-                <tr key={a.id} className={`border-t border-surface-border ${idx % 2 === 1 ? 'bg-surface/40' : ''}`}>
-                  <td className="px-3 py-2 text-ink-muted">{formatDateTime(a.datetime)}</td>
-                  <td className="px-3 py-2 font-semibold">{a.user}</td>
-                  <td className="px-3 py-2">{ROLE_LABEL[a.role]}</td>
-                  <td className="px-3 py-2">{a.action}</td>
-                  <td className="px-3 py-2 font-mono text-[11px] text-ink-muted">{a.object}</td>
-                  <td className="px-3 py-2 font-mono text-[11px] text-ink-muted">{a.ip}</td>
-                  <td className="px-3 py-2">
-                    {isReal ? (
-                      <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-700">
-                        backend
-                      </span>
-                    ) : (
-                      <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-zinc-600">
-                        demo
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
+            {filtered.slice(0, 300).map((a, idx) => (
+              <tr key={a.id} className={`border-t border-surface-border ${idx % 2 === 1 ? 'bg-surface/40' : ''}`}>
+                <td className="px-3 py-2 text-ink-muted">{formatDateTime(a.datetime)}</td>
+                <td className="px-3 py-2 font-semibold">{a.user}</td>
+                <td className="px-3 py-2">{ROLE_LABEL[a.role]}</td>
+                <td className="px-3 py-2">{a.action}</td>
+                <td className="px-3 py-2 font-mono text-[11px] text-ink-muted">{a.object}</td>
+                <td className="px-3 py-2 font-mono text-[11px] text-ink-muted">{a.ip}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </Card>
