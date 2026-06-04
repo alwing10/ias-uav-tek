@@ -20,7 +20,7 @@ import {
   type UavType,
   type VerificationStatus,
 } from '@/types/domain';
-import { formatDate, relativeMin } from '@/utils/format';
+import { formatDate, relativeMin, todayISO, daysAgoISO } from '@/utils/format';
 import { RefreshCw, Wifi } from 'lucide-react';
 
 type MapMode = 'markers' | 'clusters' | 'heatmap';
@@ -41,7 +41,10 @@ export function MapPage() {
   }, [liveIncidents, backendIncidents, stored]);
 
   const [mode, setMode] = useState<MapMode>('markers');
-  const [period, setPeriod] = useState<{ from: string; to: string }>({ from: '2026-01-01', to: '2026-05-29' });
+  const [period, setPeriod] = useState<{ from: string; to: string }>({
+    from: daysAgoISO(90),
+    to: todayISO(),
+  });
   const [regions, setRegions] = useState<string[]>([]);
   const [objectTypes, setObjectTypes] = useState<ObjectType[]>([]);
   const [uavTypes, setUavTypes] = useState<UavType[]>([]);
@@ -49,13 +52,13 @@ export function MapPage() {
   const [verifications, setVerifications] = useState<VerificationStatus[]>([]);
   const [damageRange, setDamageRange] = useState<[number, number]>([0, 10]);
   const [appliedFilters, setAppliedFilters] = useState({
-    period,
-    regions,
-    objectTypes,
-    uavTypes,
-    severities,
-    verifications,
-    damageRange,
+    period: { from: daysAgoISO(90), to: todayISO() },
+    regions: [] as string[],
+    objectTypes: [] as ObjectType[],
+    uavTypes: [] as UavType[],
+    severities: [] as Severity[],
+    verifications: [] as VerificationStatus[],
+    damageRange: [0, 10] as [number, number],
   });
 
   const filtered = useMemo(() => {
@@ -76,7 +79,7 @@ export function MapPage() {
     setAppliedFilters({ period, regions, objectTypes, uavTypes, severities, verifications, damageRange });
   }
   function reset() {
-    const def = { from: '2026-01-01', to: '2026-05-29' };
+    const def = { from: daysAgoISO(90), to: todayISO() };
     setPeriod(def);
     setRegions([]);
     setObjectTypes([]);

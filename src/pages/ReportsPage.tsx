@@ -14,7 +14,7 @@ import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { useIncidents } from '@/store/incidents';
 import { OBJECT_TYPE_LABEL, SEVERITY_LABEL, UAV_LABEL, type ObjectType, type Severity, type UavType } from '@/types/domain';
-import { MONTHS, formatDate, nf } from '@/utils/format';
+import { MONTHS, formatDate, nf, todayISO, daysAgoISO } from '@/utils/format';
 import { exportAnalyticReport } from '@/utils/exporters';
 import { REGIONS } from '@/mocks/regions';
 
@@ -45,7 +45,7 @@ interface ReportConfig {
 }
 
 const DEFAULT_CONFIG: ReportConfig = {
-  period: { from: '2026-01-01', to: '2026-05-29' },
+  period: { from: daysAgoISO(90), to: todayISO() },
   region: 'all',
   objectType: 'all',
   uavType: 'all',

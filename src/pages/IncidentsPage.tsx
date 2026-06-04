@@ -27,7 +27,7 @@ import {
   type VerificationStatus,
   type Incident,
 } from '@/types/domain';
-import { formatDateTime, nf, pluralize } from '@/utils/format';
+import { formatDateTime, nf, pluralize, todayISO, daysAgoISO } from '@/utils/format';
 import { exportIncidentsCSV, exportIncidentsPDF, exportIncidentsXLSX } from '@/utils/exporters';
 import { OBJECTS } from '@/mocks/objects';
 
@@ -60,7 +60,10 @@ export function IncidentsPage() {
     const seen = new Set<string>();
     return all.filter((i) => (seen.has(i.id) ? false : (seen.add(i.id), true)));
   }, [live, backendIncidents, stored]);
-  const [period, setPeriod] = useState<{ from: string; to: string }>({ from: '2026-01-01', to: '2026-05-29' });
+  const [period, setPeriod] = useState<{ from: string; to: string }>({
+    from: daysAgoISO(90),
+    to: todayISO(),
+  });
   const [regions, setRegions] = useState<string[]>([]);
   const [categories, setCategories] = useState<ObjectCategory[]>([]);
   const [uavs, setUavs] = useState<UavType[]>([]);

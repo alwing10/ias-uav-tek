@@ -11,8 +11,6 @@ interface LiveDataState {
   errorMessage: string | null;
   autoRefreshMin: number; // интервал в минутах
   diagnostics: {
-    gdeltOk: boolean;
-    gdeltCount: number;
     rssOk: boolean;
     rssCount: number;
   };
@@ -30,7 +28,7 @@ export const useLiveData = create<LiveDataState>((set, get) => ({
   lastUpdate: null,
   errorMessage: null,
   autoRefreshMin: 10,
-  diagnostics: { gdeltOk: false, gdeltCount: 0, rssOk: false, rssCount: 0 },
+  diagnostics: { rssOk: false, rssCount: 0 },
 
   setAutoRefresh: (min) => {
     set({ autoRefreshMin: min });
@@ -48,8 +46,6 @@ export const useLiveData = create<LiveDataState>((set, get) => ({
         status: 'ok',
         lastUpdate: new Date().toISOString(),
         diagnostics: {
-          gdeltOk: diagnostics.gdeltOk,
-          gdeltCount: diagnostics.gdeltCount,
           rssOk: diagnostics.rssOk,
           rssCount: diagnostics.rssCount,
         },

@@ -10,6 +10,7 @@ import type { DataSource } from '@/types/domain';
 import { relativeMin, nf } from '@/utils/format';
 import { useLiveData } from '@/store/liveData';
 import { useBackend } from '@/store/backendData';
+import { fetchScrapeStatus, triggerScrape, type ScrapeStatus } from '@/services/backendApi';
 
 type SourceTab = 'all' | 'media' | 'telegram' | 'rss' | 'api';
 
@@ -38,6 +39,33 @@ export function SourcesPage() {
   const backendLast = useBackend((s) => s.lastSync);
   const backendErr = useBackend((s) => s.errorMessage);
   const refreshBackend = useBackend((s) => s.refresh);
+  const [scrapeStatus, setScrapeStatus] = useState<ScrapeStatus | null>(null);
+  const [scrapeBusy, setScrapeBusy] = useState(false);
+
+  // Подтягиваем статус скрейперов с backend
+  useEffect(() => {
+    if (!backendEnabled) return;
+    const load = () =>
+      fetchScrapeStatus()
+        .then(setScrapeStatus)
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 30_000);
+    return () => clearInterval(t);
+  }, [backendEnabled]);
+
+  async function manualScrape() {
+    setScrapeBusy(true);
+    try {
+      await triggerScrape();
+      setTimeout(() => {
+        fetchScrapeStatus().then(setScrapeStatus).catch(() => {});
+        setScrapeBusy(false);
+      }, 3000);
+    } catch {
+      setScrapeBusy(false);
+    }
+  }
 
   // Эмуляция «реального времени»: новая запись каждые 3 секунды
   useEffect(() => {
@@ -101,24 +129,17 @@ export function SourcesPage() {
 
       <Card
         className="mt-4"
-        title="Подключение к открытым источникам (live)"
-        subtitle="GDELT 2.0 Doc API + RSS российских СМИ (РИА, ТАСС, РБК). Обновление каждые 10 минут."
+        title="Резервный канал (live в браузере)"
+        subtitle="Дополнительные RSS-источники (РИА, ТАСС, Lenta, Коммерсант) через rss2json.com — на случай если backend временно недоступен. Обновление каждые 10 минут."
         toolbar={
           <Button size="sm" variant="outline" onClick={() => void refreshLive()}>
             Обновить
           </Button>
         }
       >
-        <div className="grid grid-cols-2 gap-4 text-xs md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 text-xs md:grid-cols-3">
           <div>
-            <div className="text-[10px] font-semibold uppercase text-ink-muted">GDELT 2.0</div>
-            <div className="mt-1 flex items-center gap-1.5">
-              <span className={`h-2 w-2 rounded-full ${liveDiag.gdeltOk ? 'bg-emerald-500' : 'bg-red-500'}`} />
-              <span className="text-ink">{liveDiag.gdeltOk ? `OK · ${liveDiag.gdeltCount} событий` : 'Недоступен'}</span>
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] font-semibold uppercase text-ink-muted">RSS rss2json</div>
+            <div className="text-[10px] font-semibold uppercase text-ink-muted">RSS rss2json (CORS-friendly)</div>
             <div className="mt-1 flex items-center gap-1.5">
               <span className={`h-2 w-2 rounded-full ${liveDiag.rssOk ? 'bg-emerald-500' : 'bg-red-500'}`} />
               <span className="text-ink">{liveDiag.rssOk ? `OK · ${liveDiag.rssCount} событий` : 'Недоступен'}</span>
@@ -234,6 +255,55 @@ export function SourcesPage() {
           </div>
         )}
       </Card>
+
+      {/* Скрейперы backend — реальный сбор из открытых источников */}
+      {backendEnabled && (
+        <Card
+          className="mt-4"
+          title="Скрейперы backend (реальный сбор данных)"
+          subtitle="Запускаются каждые 5 минут на сервере. Обходят CORS-ограничения через прямые запросы."
+          toolbar={
+            <Button size="sm" onClick={manualScrape} disabled={scrapeBusy}>
+              {scrapeBusy ? 'Запущено…' : 'Запустить сбор сейчас'}
+            </Button>
+          }
+        >
+          <div className="grid grid-cols-2 gap-4 text-xs md:grid-cols-4">
+            <div className="rounded bg-surface p-3">
+              <div className="text-[10px] font-semibold uppercase text-ink-muted">bplarussia.ru</div>
+              <div className="mt-1 text-base font-bold text-brand-700">{scrapeStatus?.lastStats.bpl ?? 0}</div>
+              <div className="text-[10px] text-ink-muted">за последний цикл</div>
+            </div>
+            <div className="rounded bg-surface p-3">
+              <div className="text-[10px] font-semibold uppercase text-ink-muted">RSS СМИ + Google News</div>
+              <div className="mt-1 text-base font-bold text-brand-700">{scrapeStatus?.lastStats.rss ?? 0}</div>
+              <div className="text-[10px] text-ink-muted">за последний цикл</div>
+            </div>
+            <div className="rounded bg-surface p-3">
+              <div className="text-[10px] font-semibold uppercase text-ink-muted">GDELT 2.0 Doc API</div>
+              <div className="mt-1 text-base font-bold text-brand-700">
+                {scrapeStatus?.lastStats.gdelt ?? 0}
+              </div>
+              <div className="text-[10px] text-ink-muted">за последний цикл</div>
+            </div>
+            <div className="rounded bg-surface p-3">
+              <div className="text-[10px] font-semibold uppercase text-ink-muted">Всего новых</div>
+              <div className="mt-1 text-base font-bold text-emerald-600">
+                +{scrapeStatus?.lastStats.new ?? 0}
+              </div>
+              <div className="text-[10px] text-ink-muted">
+                {scrapeStatus?.lastRun ? `Цикл: ${relativeMin(scrapeStatus.lastRun)}` : 'Ещё не выполнялся'}
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 rounded border border-emerald-200 bg-emerald-50 p-3 text-[11px] text-emerald-800">
+            <b>Почему скрейпинг на backend?</b> Серверу не нужны CORS-прокси, нет rate-limit от
+            публичных прокси-сервисов, данные кэшируются в SQLite и переживают рестарт клиента.
+            Pipeline: <code>fetch (RSS/HTML/JSON) → cheerio/rss-parser → parser.js (NER+regex) →
+            upsertIncident → notifyNewIncident (email)</code>.
+          </div>
+        </Card>
+      )}
 
       <Tabs
         className="mt-4"

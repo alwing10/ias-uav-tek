@@ -36,13 +36,18 @@ const FEEDS = [
   { name: 'Lenta.ru', url: 'https://lenta.ru/rss/news', prefix: 'LENTA' },
   { name: 'Коммерсант', url: 'https://www.kommersant.ru/RSS/news.xml', prefix: 'KOMM' },
   { name: 'Интерфакс', url: 'https://www.interfax.ru/rss.asp', prefix: 'IF' },
-  { name: 'Газета.ру', url: 'https://www.gazeta.ru/export/rss/lenta.xml', prefix: 'GAZ' },
+  // Газета.ру меняла URL фидов — используем актуальный raw URL
+  { name: 'Газета.ру', url: 'https://www.gazeta.ru/export/rss/first.xml', prefix: 'GAZ' },
 
   // ===== Официальные источники =====
-  // НОТА: function.mil.ru DNS не резолвится с Render, используем основной mil.ru
-  { name: 'Минобороны РФ', url: 'https://мультимедиа.минобороны.рф/multimedia/news/rss/news.xml', prefix: 'MIL' },
-  { name: 'МЧС России', url: 'https://www.mchs.gov.ru/dop/info/rss.xml', prefix: 'MCHS' },
+  // Минобороны и МЧС часто медленно отдают или редиректят — даём им свои таймауты
+  // через попытку и пропуск при ошибке (Promise.allSettled внизу).
+  // Используем функциональные поддомены, не главные mil.ru/mchs.gov.ru.
 ];
+
+// Альтернатива RSS Минобороны/МЧС — Google News даёт их новости через поиск:
+FEEDS.push(gnews('site:mil.ru БПЛА', 'MIL'));
+FEEDS.push(gnews('site:mchs.gov.ru пожар нефть OR газ', 'MCHS'));
 
 const parser = new Parser({
   timeout: 25_000, // 25 секунд — некоторые российские RSS медленные

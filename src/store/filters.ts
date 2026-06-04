@@ -12,8 +12,18 @@ export interface IncidentsFilter {
   search: string;
 }
 
+function todayISOLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function daysAgoISOLocal(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 const DEFAULT_FILTER: IncidentsFilter = {
-  period: { from: '2026-01-01', to: '2026-05-29' },
+  period: { from: daysAgoISOLocal(90), to: todayISOLocal() },
   regions: [],
   objectTypes: [],
   uavTypes: [],
