@@ -14,6 +14,7 @@ import { ObjectDetailPage } from '@/pages/ObjectDetailPage';
 import { SourcesPage } from '@/pages/SourcesPage';
 import { DictionariesPage } from '@/pages/DictionariesPage';
 import { AuditPage } from '@/pages/AuditPage';
+import { SubscriptionsPage } from '@/pages/SubscriptionsPage';
 
 export default function App() {
   return (
@@ -44,6 +45,7 @@ export default function App() {
         />
         <Route path="objects" element={<ObjectsPage />} />
         <Route path="objects/:id" element={<ObjectDetailPage />} />
+        <Route path="subscriptions" element={<SubscriptionsPage />} />
         <Route
           path="sources"
           element={

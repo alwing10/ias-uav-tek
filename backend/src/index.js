@@ -7,6 +7,7 @@ import express from 'express';
 import cors from 'cors';
 import compression from 'compression';
 import morgan from 'morgan';
+import cron from 'node-cron';
 import {
   listIncidents,
   getIncident,
@@ -15,8 +16,14 @@ import {
   statsKpi,
   listAudit,
   insertAudit,
+  listSubscriptions,
+  upsertSubscription,
+  deleteSubscription,
+  getSubscription,
 } from './db.js';
 import { seedIfEmpty } from './seed.js';
+import { runAllScrapers, getScrapeStatus } from './scrapers/index.js';
+import { sendTestEmail } from './notify.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -29,11 +36,13 @@ app.use(morgan('tiny'));
 
 // Health-check для Render и фронта
 app.get('/health', (_req, res) => {
+  const scrape = getScrapeStatus();
   res.json({
     status: 'ok',
     service: 'ias-uav-tek-backend',
     time: new Date().toISOString(),
-    version: '1.0.0',
+    version: '2.0.0',
+    scrape,
   });
 });
 
@@ -62,9 +71,7 @@ app.get('/api/incidents/:id', (req, res) => {
 app.post('/api/incidents', (req, res) => {
   try {
     const body = req.body;
-    if (!body || !body.id) {
-      return res.status(400).json({ error: 'id required' });
-    }
+    if (!body || !body.id) return res.status(400).json({ error: 'id required' });
     const saved = upsertIncident(body);
     insertAudit({
       user: req.headers['x-user'] ?? 'system',
@@ -96,11 +103,9 @@ app.post('/api/incidents/:id/verify', (req, res) => {
   res.json(saved);
 });
 
-// ===== STATS / KPI =====
+// ===== STATS =====
 
-app.get('/api/stats/kpi', (_req, res) => {
-  res.json(statsKpi());
-});
+app.get('/api/stats/kpi', (_req, res) => res.json(statsKpi()));
 
 // ===== AUDIT =====
 
@@ -128,12 +133,84 @@ app.post('/api/audit', (req, res) => {
   res.status(201).json({ id });
 });
 
+// ===== СБОР (СКРЕЙПИНГ) =====
+
+app.post('/api/scrape/run', async (_req, res) => {
+  // Ручной запуск всех скрейперов
+  res.json({ status: 'started' });
+  runAllScrapers().catch((e) => console.error('[scrape]', e));
+});
+
+app.get('/api/scrape/status', (_req, res) => {
+  res.json(getScrapeStatus());
+});
+
+// ===== ПОДПИСКИ =====
+
+app.get('/api/subscriptions', (_req, res) => {
+  res.json({ items: listSubscriptions() });
+});
+
+app.get('/api/subscriptions/:email', (req, res) => {
+  const sub = getSubscription(req.params.email);
+  if (!sub) return res.status(404).json({ error: 'not found' });
+  res.json(sub);
+});
+
+app.post('/api/subscriptions', (req, res) => {
+  const { email, regions = [], severities = ['critical', 'high'] } = req.body ?? {};
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'invalid email' });
+  }
+  const saved = upsertSubscription({ email, regions, severities });
+  insertAudit({
+    user: email,
+    role: 'analyst',
+    action: 'Создана/обновлена подписка на уведомления',
+    object: `regions=${regions.join(',') || 'все'} sev=${severities.join(',')}`,
+    ip: req.ip,
+  });
+  res.status(201).json(saved);
+});
+
+app.delete('/api/subscriptions/:email', (req, res) => {
+  deleteSubscription(req.params.email);
+  insertAudit({
+    user: req.params.email,
+    role: 'analyst',
+    action: 'Удалена подписка на уведомления',
+    object: req.params.email,
+    ip: req.ip,
+  });
+  res.status(204).end();
+});
+
+app.post('/api/subscriptions/:email/test', async (req, res) => {
+  try {
+    const result = await sendTestEmail(req.params.email);
+    res.json({ status: 'sent', ...result });
+  } catch (e) {
+    res.status(500).json({ status: 'error', error: e.message });
+  }
+});
+
 // ===== Запуск =====
 
 seedIfEmpty(200);
+
+// Запускаем первый сбор через 30 секунд после старта (даём сервису прогреться)
+setTimeout(() => {
+  runAllScrapers().catch((e) => console.error('[scrape initial]', e));
+}, 30_000);
+
+// Cron: запускать сбор каждые 5 минут
+cron.schedule('*/5 * * * *', () => {
+  runAllScrapers().catch((e) => console.error('[scrape cron]', e));
+});
 
 app.listen(PORT, () => {
   console.log(`[ias-backend] http://0.0.0.0:${PORT}`);
   console.log(`[ias-backend] health: /health`);
   console.log(`[ias-backend] CORS_ORIGIN = ${CORS_ORIGIN}`);
+  console.log(`[ias-backend] Scrape cron: */5 * * * * (каждые 5 минут)`);
 });

@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
   Activity,
   BarChart3,
+  Bell,
   Building2,
   CheckCircle2,
   ClipboardList,
@@ -31,6 +32,7 @@ const NAV: Array<{ to: string; label: string; icon: typeof Home; roles: Role[] }
   { to: '/reports', label: 'Отчёты', icon: FileText, roles: ['analyst'] },
   { to: '/verification', label: 'Верификация', icon: CheckCircle2, roles: ['expert'] },
   { to: '/objects', label: 'Объекты ТЭК', icon: Building2, roles: ['analyst'] },
+  { to: '/subscriptions', label: 'Подписки', icon: Bell, roles: ['analyst'] },
   { to: '/sources', label: 'Источники', icon: Radio, roles: ['admin'] },
   { to: '/dictionaries', label: 'Справочники', icon: ClipboardList, roles: ['admin'] },
   { to: '/audit', label: 'Журнал', icon: ShieldCheck, roles: ['admin'] },

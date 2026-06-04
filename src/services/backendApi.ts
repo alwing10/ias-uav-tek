@@ -127,3 +127,65 @@ export async function fetchAudit(): Promise<AuditEvent[]> {
 export async function postAudit(ev: Partial<AuditEvent> & { action: string }): Promise<{ id: string }> {
   return req<{ id: string }>('/api/audit', { method: 'POST', body: JSON.stringify(ev) });
 }
+
+// ===== ПОДПИСКИ =====
+
+export interface Subscription {
+  id: number;
+  email: string;
+  regions: string[];
+  severities: string[];
+  active: boolean;
+  createdAt: string;
+  lastSentAt: string | null;
+}
+
+export async function fetchSubscriptions(): Promise<Subscription[]> {
+  const data = await req<{ items: Subscription[] }>('/api/subscriptions');
+  return data.items;
+}
+
+export async function getSubscription(email: string): Promise<Subscription | null> {
+  try {
+    return await req<Subscription>(`/api/subscriptions/${encodeURIComponent(email)}`);
+  } catch {
+    return null;
+  }
+}
+
+export async function upsertSubscription(
+  email: string,
+  regions: string[],
+  severities: string[],
+): Promise<Subscription> {
+  return req<Subscription>('/api/subscriptions', {
+    method: 'POST',
+    body: JSON.stringify({ email, regions, severities }),
+  });
+}
+
+export async function deleteSubscription(email: string): Promise<void> {
+  await req<void>(`/api/subscriptions/${encodeURIComponent(email)}`, { method: 'DELETE' });
+}
+
+export async function sendTestEmail(email: string): Promise<{ status: string; preview?: string | null; messageId?: string }> {
+  return req<{ status: string; preview?: string | null; messageId?: string }>(
+    `/api/subscriptions/${encodeURIComponent(email)}/test`,
+    { method: 'POST' },
+  );
+}
+
+// ===== СКРЕЙПЕРЫ =====
+
+export interface ScrapeStatus {
+  lastRun: string | null;
+  lastStats: { bpl: number; rss: number; new: number; errors: number };
+}
+
+export async function fetchScrapeStatus(): Promise<ScrapeStatus> {
+  return req<ScrapeStatus>('/api/scrape/status');
+}
+
+export async function triggerScrape(): Promise<{ status: string }> {
+  return req<{ status: string }>('/api/scrape/run', { method: 'POST' });
+}

@@ -71,6 +71,30 @@ CREATE TABLE IF NOT EXISTS verification_updates (
   verified_at TEXT NOT NULL,
   FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  email           TEXT NOT NULL,
+  regions_json    TEXT NOT NULL DEFAULT '[]',
+  severities_json TEXT NOT NULL DEFAULT '["critical","high"]',
+  active          INTEGER NOT NULL DEFAULT 1,
+  created_at      TEXT NOT NULL,
+  last_sent_at    TEXT,
+  UNIQUE(email)
+);
+
+CREATE INDEX IF NOT EXISTS ix_subs_email ON subscriptions(email);
+
+CREATE TABLE IF NOT EXISTS notification_log (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  incident_id TEXT NOT NULL,
+  email       TEXT NOT NULL,
+  sent_at     TEXT NOT NULL,
+  status      TEXT NOT NULL,
+  message_id  TEXT,
+  error       TEXT,
+  UNIQUE(incident_id, email)
+);
 `);
 
 // --- ORM-обёртки ---
@@ -243,6 +267,79 @@ export function listAudit({ from, to, user, action, limit = 200 } = {}) {
     LIMIT @limit
   `;
   return db.prepare(sql).all({ ...params, limit });
+}
+
+// ---------- ПОДПИСКИ ----------
+
+export function listSubscriptions() {
+  return db.prepare('SELECT * FROM subscriptions ORDER BY created_at DESC').all().map(rowToSubscription);
+}
+
+export function getSubscription(email) {
+  const row = db.prepare('SELECT * FROM subscriptions WHERE email = ?').get(email);
+  return row ? rowToSubscription(row) : null;
+}
+
+export function upsertSubscription({ email, regions = [], severities = ['critical', 'high'] }) {
+  db.prepare(
+    `INSERT INTO subscriptions (email, regions_json, severities_json, active, created_at)
+     VALUES (?, ?, ?, 1, ?)
+     ON CONFLICT(email) DO UPDATE SET
+       regions_json = excluded.regions_json,
+       severities_json = excluded.severities_json,
+       active = 1`,
+  ).run(email.toLowerCase(), JSON.stringify(regions), JSON.stringify(severities), new Date().toISOString());
+  return getSubscription(email.toLowerCase());
+}
+
+export function deleteSubscription(email) {
+  db.prepare('DELETE FROM subscriptions WHERE email = ?').run(email.toLowerCase());
+}
+
+export function getActiveSubscriptionsFor(incident) {
+  // Подписки, у которых регион инцидента ИЛИ regions пустой (= все регионы),
+  // И тяжесть инцидента входит в severities ИЛИ severities пустой
+  const rows = db.prepare('SELECT * FROM subscriptions WHERE active = 1').all();
+  return rows.map(rowToSubscription).filter((s) => {
+    const regionOk = s.regions.length === 0 || s.regions.includes(incident.regionCode);
+    const sevOk = s.severities.length === 0 || s.severities.includes(incident.severity);
+    return regionOk && sevOk;
+  });
+}
+
+function rowToSubscription(row) {
+  return {
+    id: row.id,
+    email: row.email,
+    regions: JSON.parse(row.regions_json || '[]'),
+    severities: JSON.parse(row.severities_json || '[]'),
+    active: !!row.active,
+    createdAt: row.created_at,
+    lastSentAt: row.last_sent_at,
+  };
+}
+
+export function logNotification(incidentId, email, status, messageId, error) {
+  try {
+    db.prepare(
+      'INSERT INTO notification_log (incident_id, email, sent_at, status, message_id, error) VALUES (?, ?, ?, ?, ?, ?)',
+    ).run(incidentId, email, new Date().toISOString(), status, messageId ?? null, error ?? null);
+    if (status === 'sent') {
+      db.prepare('UPDATE subscriptions SET last_sent_at = ? WHERE email = ?').run(
+        new Date().toISOString(),
+        email,
+      );
+    }
+  } catch {
+    /* дубль уведомления — это OK, не ошибка */
+  }
+}
+
+export function wasNotified(incidentId, email) {
+  const row = db
+    .prepare("SELECT id FROM notification_log WHERE incident_id = ? AND email = ? AND status = 'sent'")
+    .get(incidentId, email);
+  return !!row;
 }
 
 export function insertAudit(ev) {

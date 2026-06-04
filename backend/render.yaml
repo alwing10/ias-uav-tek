@@ -27,3 +27,21 @@ services:
         value: 4000
       - key: CORS_ORIGIN
         value: '*'
+      # ===== Email-уведомления =====
+      # ЗАПОЛНИТЕ ВРУЧНУЮ в Render Dashboard → Environment.
+      # Без этих переменных используется Ethereal (фейковый SMTP, превью в логах).
+      # Resend: SMTP_HOST=smtp.resend.com, SMTP_PORT=465, SMTP_USER=resend, SMTP_PASS=<api_key>
+      # Gmail:  SMTP_HOST=smtp.gmail.com, SMTP_PORT=465, SMTP_USER=<email>, SMTP_PASS=<app_password>
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      # URL фронта на GitHub Pages — нужен для ссылки в письме
+      - key: FRONTEND_URL
+        sync: false
