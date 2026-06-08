@@ -189,6 +189,7 @@ const INSERT_INCIDENT = db.prepare(`
 `);
 
 export function upsertIncident(i) {
+  markIdKnown(i.id);
   INSERT_INCIDENT.run({
     id: i.id,
     datetime: i.datetime,
@@ -238,6 +239,72 @@ export function setVerification(id, status, verifiedBy) {
 export function deleteDemoIncidents() {
   const result = db.prepare("DELETE FROM incidents WHERE id LIKE 'DB-%'").run();
   return { deleted: result.changes };
+}
+
+/**
+ * Быстрый кэш всех известных ID в памяти (Set).
+ * Перезагружается каждые 30 секунд. Используется скрейпером для
+ * мгновенного skip уже известных URL без парсинга.
+ */
+let knownIdsCache = new Set();
+let knownIdsLoadedAt = 0;
+const KNOWN_IDS_TTL = 30_000;
+
+export function getKnownIncidentIds() {
+  if (Date.now() - knownIdsLoadedAt > KNOWN_IDS_TTL) {
+    const rows = db.prepare('SELECT id FROM incidents').all();
+    knownIdsCache = new Set(rows.map((r) => r.id));
+    knownIdsLoadedAt = Date.now();
+  }
+  return knownIdsCache;
+}
+
+export function markIdKnown(id) {
+  knownIdsCache.add(id);
+}
+
+/**
+ * Семантический поиск дубля: возвращает существующий инцидент,
+ * который описывает то же событие (тот же регион + тип объекта
+ * + в окне ±12 часов от даты новой новости).
+ *
+ * Используется, чтобы разные СМИ про один и тот же удар
+ * объединялись в один инцидент с несколькими источниками,
+ * а не плодили дубли.
+ */
+export function findSemanticDuplicate(incident) {
+  const dt = new Date(incident.datetime).getTime();
+  const fromIso = new Date(dt - 12 * 3600_000).toISOString();
+  const toIso = new Date(dt + 12 * 3600_000).toISOString();
+  const row = db
+    .prepare(
+      `SELECT * FROM incidents
+       WHERE region_code = ?
+         AND object_type = ?
+         AND datetime BETWEEN ? AND ?
+       ORDER BY datetime ASC
+       LIMIT 1`,
+    )
+    .get(incident.regionCode, incident.objectType, fromIso, toIso);
+  return row ? rowToIncident(row) : null;
+}
+
+/**
+ * Слияние источников: к существующему инциденту добавить новый источник,
+ * избегая дублей по name.
+ */
+export function mergeSourcesIntoIncident(existingId, newSource) {
+  const existing = getIncident(existingId);
+  if (!existing) return null;
+  const seen = new Set(existing.sources.map((s) => `${s.name}:${s.url || ''}`));
+  const key = `${newSource.name}:${newSource.url || ''}`;
+  if (seen.has(key)) return existing;
+  const merged = [...existing.sources, newSource];
+  db.prepare('UPDATE incidents SET sources_json = ? WHERE id = ?').run(
+    JSON.stringify(merged),
+    existingId,
+  );
+  return getIncident(existingId);
 }
 
 export function statsKpi() {

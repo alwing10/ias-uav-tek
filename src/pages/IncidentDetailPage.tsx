@@ -15,6 +15,7 @@ import {
 import { useIncidents } from '@/store/incidents';
 import { useLiveData } from '@/store/liveData';
 import { useBackend } from '@/store/backendData';
+import { upsertIncident as upsertIncidentBackend, verifyIncident } from '@/services/backendApi';
 import {
   OBJECT_TYPE_GROUP,
   OBJECT_TYPE_LABEL,
@@ -47,6 +48,11 @@ export function IncidentDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [reclassOpen, setReclassOpen] = useState(false);
   const [fullTextOpen, setFullTextOpen] = useState(false);
+  const [draft, setDraft] = useState<Partial<{ severity: Severity; damage: number; description: string; uavType: UavType }>>({});
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const backendEnabled = useBackend((s) => s.enabled);
+  const backendRefresh = useBackend((s) => s.refresh);
 
   if (!incident) {
     return (
@@ -78,6 +84,18 @@ export function IncidentDetailPage() {
       title=""
       toolbar={null}
     >
+      {toast && (
+        <div
+          className={`mb-3 rounded-card border px-3 py-2 text-xs ${
+            toast.kind === 'ok'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-orange-200 bg-orange-50 text-orange-800'
+          }`}
+        >
+          {toast.text}
+        </div>
+      )}
+
       <div className="mb-2 text-xs text-ink-muted">
         <Link to="/incidents" className="hover:underline">
           Инциденты
@@ -364,18 +382,59 @@ export function IncidentDetailPage() {
         </Card>
       )}
 
-      {/* Модал — редактирование */}
+      {/* Модал — редактирование (через draft + Save) */}
       <Modal
         open={editOpen}
-        onClose={() => setEditOpen(false)}
+        onClose={() => {
+          setEditOpen(false);
+          setDraft({});
+        }}
         title={`Редактирование ${incident.id}`}
         size="md"
         footer={
           <>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditOpen(false);
+                setDraft({});
+              }}
+              disabled={saving}
+            >
               Отмена
             </Button>
-            <Button onClick={() => setEditOpen(false)}>Сохранить</Button>
+            <Button
+              disabled={saving || Object.keys(draft).length === 0}
+              onClick={async () => {
+                setSaving(true);
+                // 1) Применяем локально
+                updateAttributes(incident.id, draft);
+                // 2) Если backend подключён и инцидент там есть — отправляем upsert
+                const onBackend = backendIncidents.some((i) => i.id === incident.id);
+                if (backendEnabled && onBackend) {
+                  try {
+                    await upsertIncidentBackend({ ...incident, ...draft });
+                    void backendRefresh();
+                    setToast({ kind: 'ok', text: `Сохранено: локально и на backend` });
+                  } catch (e) {
+                    setToast({ kind: 'err', text: `Сохранено локально, backend: ${(e as Error).message}` });
+                  }
+                } else {
+                  setToast({
+                    kind: 'ok',
+                    text: backendEnabled
+                      ? 'Сохранено локально (инцидент не на backend)'
+                      : 'Сохранено локально (backend не подключён)',
+                  });
+                }
+                setSaving(false);
+                setEditOpen(false);
+                setDraft({});
+                setTimeout(() => setToast(null), 4000);
+              }}
+            >
+              {saving ? 'Сохранение…' : 'Сохранить'}
+            </Button>
           </>
         }
       >
@@ -383,8 +442,8 @@ export function IncidentDetailPage() {
           <label className="block">
             <span className="text-xs font-semibold text-ink-muted">Тяжесть</span>
             <select
-              value={incident.severity}
-              onChange={(e) => updateAttributes(incident.id, { severity: e.target.value as Severity })}
+              value={draft.severity ?? incident.severity}
+              onChange={(e) => setDraft((d) => ({ ...d, severity: e.target.value as Severity }))}
               className="mt-1 h-9 w-full rounded border border-surface-border px-2"
             >
               {(['low', 'medium', 'high', 'critical'] as Severity[]).map((v) => (
@@ -395,21 +454,37 @@ export function IncidentDetailPage() {
             </select>
           </label>
           <label className="block">
-            <span className="text-xs font-semibold text-ink-muted">Уровень ущерба: {incident.damage}</span>
+            <span className="text-xs font-semibold text-ink-muted">
+              Уровень ущерба: {draft.damage ?? incident.damage}
+            </span>
             <input
               type="range"
               min={0}
               max={10}
-              value={incident.damage}
-              onChange={(e) => updateAttributes(incident.id, { damage: +e.target.value })}
+              value={draft.damage ?? incident.damage}
+              onChange={(e) => setDraft((d) => ({ ...d, damage: +e.target.value }))}
               className="mt-1 w-full"
             />
           </label>
           <label className="block">
+            <span className="text-xs font-semibold text-ink-muted">Тип БПЛА</span>
+            <select
+              value={draft.uavType ?? incident.uavType}
+              onChange={(e) => setDraft((d) => ({ ...d, uavType: e.target.value as UavType }))}
+              className="mt-1 h-9 w-full rounded border border-surface-border px-2"
+            >
+              {(Object.keys(UAV_LABEL) as UavType[]).map((v) => (
+                <option key={v} value={v}>
+                  {UAV_LABEL[v]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
             <span className="text-xs font-semibold text-ink-muted">Описание</span>
             <textarea
-              value={incident.description}
-              onChange={(e) => updateAttributes(incident.id, { description: e.target.value })}
+              value={draft.description ?? incident.description}
+              onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
               rows={4}
               className="mt-1 w-full rounded border border-surface-border p-2 text-sm"
             />
@@ -464,22 +539,45 @@ export function IncidentDetailPage() {
         size="md"
         footer={
           <>
-            <Button variant="outline" onClick={() => setReclassOpen(false)}>
+            <Button variant="outline" onClick={() => setReclassOpen(false)} disabled={saving}>
               Отмена
             </Button>
-            <Button onClick={() => setReclassOpen(false)}>Запустить</Button>
+            <Button
+              disabled={saving || !draft.uavType}
+              onClick={async () => {
+                if (!draft.uavType) return;
+                setSaving(true);
+                updateAttributes(incident.id, { uavType: draft.uavType });
+                if (backendEnabled && backendIncidents.some((i) => i.id === incident.id)) {
+                  try {
+                    await upsertIncidentBackend({ ...incident, uavType: draft.uavType });
+                    void backendRefresh();
+                    setToast({ kind: 'ok', text: 'Тип БПЛА обновлён (локально + backend)' });
+                  } catch (e) {
+                    setToast({ kind: 'err', text: `Ошибка backend: ${(e as Error).message}` });
+                  }
+                } else {
+                  setToast({ kind: 'ok', text: 'Тип БПЛА обновлён локально' });
+                }
+                setSaving(false);
+                setReclassOpen(false);
+                setDraft({});
+                setTimeout(() => setToast(null), 4000);
+              }}
+            >
+              {saving ? 'Применение…' : 'Применить'}
+            </Button>
           </>
         }
       >
         <p className="text-sm text-ink">
-          Запуск повторной классификации текущей версией модели. Затронуты атрибуты: тип объекта,
-          тип БПЛА, тяжесть.
+          Запуск повторной классификации текущей версией модели. Затронут атрибут «тип БПЛА».
         </p>
         <label className="mt-3 block">
           <span className="text-xs font-semibold text-ink-muted">Тип БПЛА</span>
           <select
-            defaultValue={incident.uavType}
-            onChange={(e) => updateAttributes(incident.id, { uavType: e.target.value as UavType })}
+            value={draft.uavType ?? incident.uavType}
+            onChange={(e) => setDraft((d) => ({ ...d, uavType: e.target.value as UavType }))}
             className="mt-1 h-9 w-full rounded border border-surface-border px-2"
           >
             {(Object.keys(UAV_LABEL) as UavType[]).map((v) => (

@@ -37,22 +37,31 @@ export function VerificationPage() {
     [incidents],
   );
 
-  // Если включён backend — отправляем верификации и туда (для DB- и LIVE- инцидентов)
+  // Множество ID, которые точно есть на backend (по последней синхронизации)
+  const backendIds = useMemo(() => new Set(backendIncidents.map((i) => i.id)), [backendIncidents]);
+
+  // Отправляем верификацию на backend для каждого инцидента, который там реально есть.
+  // Раньше фильтр был по префиксу (DB-/LIVE-), но реальные инциденты имеют
+  // префиксы BPL-/RIA-/TASS-/GN1-/GDELT- — они в фильтр не попадали.
   async function backendVerify(ids: string[], status: 'verified' | 'rejected' | 'pending') {
-    if (!backendEnabled) return;
+    if (!backendEnabled) return { ok: 0, failed: 0 };
+    let ok = 0;
+    let failed = 0;
     for (const id of ids) {
-      if (id.startsWith('DB-') || id.startsWith('LIVE-')) {
-        try {
-          await verifyIncident(id, status, user?.name);
-        } catch {
-          /* ignore — UI остаётся консистентным с локальным стором */
-        }
+      if (!backendIds.has(id)) continue; // нет на backend (например, чисто live-инцидент)
+      try {
+        await verifyIncident(id, status, user?.name);
+        ok += 1;
+      } catch {
+        failed += 1;
       }
     }
     void backendRefresh();
+    return { ok, failed };
   }
   const [selected, setSelected] = useState<string[]>([]);
   const [compareId, setCompareId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   function toggle(id: string) {
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -61,12 +70,23 @@ export function VerificationPage() {
     setSelected(queue.map((i) => i.id));
   }
 
-  function applyBulk(action: 'approve' | 'reject' | 'ask') {
+  async function applyBulk(action: 'approve' | 'reject' | 'ask') {
     const status: 'verified' | 'rejected' | 'pending' =
       action === 'approve' ? 'verified' : action === 'reject' ? 'rejected' : 'pending';
-    bulkVerify(selected, status, user?.name);
-    void backendVerify(selected, status);
+    const ids = [...selected];
+    bulkVerify(ids, status, user?.name);
+    const res = await backendVerify(ids, status);
+    const label = status === 'verified' ? 'Подтверждено' : status === 'rejected' ? 'Отклонено' : 'Отправлено на уточнение';
+    if (backendEnabled) {
+      setToast({
+        kind: res.failed > 0 ? 'err' : 'ok',
+        text: `${label}: ${ids.length} (на backend: ${res.ok}, ошибок: ${res.failed})`,
+      });
+    } else {
+      setToast({ kind: 'ok', text: `${label}: ${ids.length} (только локально, backend выключен)` });
+    }
     setSelected([]);
+    setTimeout(() => setToast(null), 4000);
   }
 
   const compareIncident = compareId ? incidents.find((i) => i.id === compareId) : null;
@@ -92,6 +112,18 @@ export function VerificationPage() {
         </div>
       }
     >
+      {toast && (
+        <div
+          className={`mb-3 rounded-card border px-3 py-2 text-xs ${
+            toast.kind === 'ok'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-orange-200 bg-orange-50 text-orange-800'
+          }`}
+        >
+          {toast.text}
+        </div>
+      )}
+
       <Card padding="none">
         <table className="w-full text-xs">
           <thead className="bg-surface text-ink-muted">
@@ -166,18 +198,28 @@ export function VerificationPage() {
             <>
               <Button
                 variant="outline"
-                onClick={() => {
+                onClick={async () => {
                   bulkVerify([compareIncident.id], 'rejected', user?.name);
-                  void backendVerify([compareIncident.id], 'rejected');
+                  const res = await backendVerify([compareIncident.id], 'rejected');
+                  setToast({
+                    kind: res.failed > 0 ? 'err' : 'ok',
+                    text: `Инцидент ${compareIncident.id} отклонён${backendEnabled ? ` (backend: ${res.ok > 0 ? 'OK' : 'не сохранён'})` : ' (локально)'}`,
+                  });
+                  setTimeout(() => setToast(null), 4000);
                   setCompareId(null);
                 }}
               >
                 Отклонить
               </Button>
               <Button
-                onClick={() => {
+                onClick={async () => {
                   bulkVerify([compareIncident.id], 'verified', user?.name);
-                  void backendVerify([compareIncident.id], 'verified');
+                  const res = await backendVerify([compareIncident.id], 'verified');
+                  setToast({
+                    kind: res.failed > 0 ? 'err' : 'ok',
+                    text: `Инцидент ${compareIncident.id} подтверждён${backendEnabled ? ` (backend: ${res.ok > 0 ? 'OK' : 'не сохранён'})` : ' (локально)'}`,
+                  });
+                  setTimeout(() => setToast(null), 4000);
                   setCompareId(null);
                 }}
               >

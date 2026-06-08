@@ -70,13 +70,13 @@ function detectObjectType(text: string): { type: ObjectType; name: string } | nu
   const t = text.toLowerCase();
   if (/нпз|нефтеперераб|переработ.*нефт/.test(t)) return { type: 'refinery', name: 'НПЗ (по сообщению)' };
   if (/нефтебаз|нефтехран|резервуар|танк-парк/.test(t)) return { type: 'oil_depot', name: 'Нефтебаза (по сообщению)' };
-  if (/нефтепровод|труба.*нефт/.test(t)) return { type: 'oil_pipeline', name: 'Нефтепровод (по сообщению)' };
+  if (/нефтепровод|труба.*нефт|транснефт/.test(t)) return { type: 'oil_pipeline', name: 'Нефтепровод (по сообщению)' };
   if (/газопровод|газовая магистраль/.test(t)) return { type: 'gas_pipeline', name: 'Газопровод (по сообщению)' };
-  if (/газокомпрессор|КС газпром/.test(t)) return { type: 'gas_compressor', name: 'ГКС (по сообщению)' };
-  if (/лэп|линия.*электропередач/.test(t)) return { type: 'power_grid', name: 'ЛЭП (по сообщению)' };
+  if (/газокомпрессор/.test(t)) return { type: 'gas_compressor', name: 'ГКС (по сообщению)' };
+  if (/\bлэп\b|линия.*электропередач/.test(t)) return { type: 'power_grid', name: 'ЛЭП (по сообщению)' };
   if (/подстанц/.test(t)) return { type: 'substation', name: 'Подстанция (по сообщению)' };
-  if (/тэс|тэц|грэс|электростанц/.test(t)) return { type: 'power_plant', name: 'Электростанция (по сообщению)' };
-  if (/нефт|газ|энерг|топлив/.test(t)) return { type: 'other', name: 'Объект ТЭК (по сообщению)' };
+  if (/\bтэс\b|тэц|грэс|электростанц/.test(t)) return { type: 'power_plant', name: 'Электростанция (по сообщению)' };
+  // НЕТ fallback на 'other' — это создавало ложные срабатывания на общих новостях
   return null;
 }
 
