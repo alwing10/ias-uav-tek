@@ -179,7 +179,16 @@ export async function sendTestEmail(email: string): Promise<{ status: string; pr
 
 export interface ScrapeStatus {
   lastRun: string | null;
-  lastStats: { bpl: number; rss: number; gdelt: number; new: number; errors: number };
+  lastStats: {
+    bpl: number;
+    rss: number;
+    gdelt: number;
+    tg: number;
+    new: number;
+    merged: number;
+    skipped: number;
+    errors: number;
+  };
 }
 
 export async function fetchScrapeStatus(): Promise<ScrapeStatus> {
@@ -193,4 +202,25 @@ export async function triggerScrape(): Promise<{ status: string }> {
 /** Удалить старые демо-инциденты (ID начинающиеся с DB-) из БД */
 export async function deleteDemoIncidents(): Promise<{ deleted: number }> {
   return req<{ deleted: number }>('/api/incidents/demo', { method: 'DELETE' });
+}
+
+// ===== HOTSPOTS (горячие объекты ТЭК) — уникальная фича =====
+
+export interface Hotspot {
+  regionCode: string;
+  region: string;
+  objectType: string;
+  score: number;
+  trend: 'up' | 'down' | 'flat';
+  incidents30: number;
+  incidents90: number;
+  incidentsPrev30: number;
+  lastIncidentAt: string | null;
+  severityMix: string;
+  successRate: string;
+}
+
+export async function fetchHotspots(limit = 10): Promise<Hotspot[]> {
+  const data = await req<{ items: Hotspot[] }>(`/api/stats/hotspots?limit=${limit}`);
+  return data.items;
 }

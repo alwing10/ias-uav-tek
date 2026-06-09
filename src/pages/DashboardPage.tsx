@@ -17,6 +17,7 @@ import { ChevronDown, MapPin } from 'lucide-react';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { KpiCard } from '@/components/common/KpiCard';
 import { Card } from '@/components/common/Card';
+import { HotspotsCard } from '@/components/common/HotspotsCard';
 import {
   SeverityBadge,
   IncidentStatusBadge,
@@ -326,6 +327,11 @@ export function DashboardPage() {
             </ResponsiveContainer>
           </div>
         </Card>
+      </div>
+
+      {/* УНИКАЛЬНАЯ ФИЧА: алгоритмический индекс риска для пар (регион × тип объекта) */}
+      <div className="mt-4">
+        <HotspotsCard />
       </div>
 
       <Card

@@ -284,39 +284,44 @@ export function SourcesPage() {
             </div>
           }
         >
-          <div className="grid grid-cols-2 gap-4 text-xs md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 text-xs md:grid-cols-5">
             <div className="rounded bg-surface p-3">
               <div className="text-[10px] font-semibold uppercase text-ink-muted">bplarussia.ru</div>
               <div className="mt-1 text-base font-bold text-brand-700">{scrapeStatus?.lastStats.bpl ?? 0}</div>
-              <div className="text-[10px] text-ink-muted">за последний цикл</div>
+              <div className="text-[10px] text-ink-muted">HTML парсинг</div>
             </div>
             <div className="rounded bg-surface p-3">
-              <div className="text-[10px] font-semibold uppercase text-ink-muted">RSS СМИ + Google News</div>
+              <div className="text-[10px] font-semibold uppercase text-ink-muted">Telegram (t.me/s/)</div>
+              <div className="mt-1 text-base font-bold text-brand-700">{scrapeStatus?.lastStats.tg ?? 0}</div>
+              <div className="text-[10px] text-ink-muted">15 каналов без бота</div>
+            </div>
+            <div className="rounded bg-surface p-3">
+              <div className="text-[10px] font-semibold uppercase text-ink-muted">RSS + Google News</div>
               <div className="mt-1 text-base font-bold text-brand-700">{scrapeStatus?.lastStats.rss ?? 0}</div>
-              <div className="text-[10px] text-ink-muted">за последний цикл</div>
+              <div className="text-[10px] text-ink-muted">26 фидов и запросов</div>
             </div>
             <div className="rounded bg-surface p-3">
-              <div className="text-[10px] font-semibold uppercase text-ink-muted">GDELT 2.0 Doc API</div>
+              <div className="text-[10px] font-semibold uppercase text-ink-muted">GDELT 2.0</div>
               <div className="mt-1 text-base font-bold text-brand-700">
                 {scrapeStatus?.lastStats.gdelt ?? 0}
               </div>
-              <div className="text-[10px] text-ink-muted">за последний цикл</div>
+              <div className="text-[10px] text-ink-muted">4 запроса параллельно</div>
             </div>
             <div className="rounded bg-surface p-3">
-              <div className="text-[10px] font-semibold uppercase text-ink-muted">Всего новых</div>
+              <div className="text-[10px] font-semibold uppercase text-ink-muted">Итог цикла</div>
               <div className="mt-1 text-base font-bold text-emerald-600">
                 +{scrapeStatus?.lastStats.new ?? 0}
               </div>
               <div className="text-[10px] text-ink-muted">
-                {scrapeStatus?.lastRun ? `Цикл: ${relativeMin(scrapeStatus.lastRun)}` : 'Ещё не выполнялся'}
+                мерж {scrapeStatus?.lastStats.merged ?? 0} · skip {scrapeStatus?.lastStats.skipped ?? 0}
               </div>
             </div>
           </div>
           <div className="mt-3 rounded border border-emerald-200 bg-emerald-50 p-3 text-[11px] text-emerald-800">
-            <b>Почему скрейпинг на backend?</b> Серверу не нужны CORS-прокси, нет rate-limit от
-            публичных прокси-сервисов, данные кэшируются в SQLite и переживают рестарт клиента.
-            Pipeline: <code>fetch (RSS/HTML/JSON) → cheerio/rss-parser → parser.js (NER+regex) →
-            upsertIncident → notifyNewIncident (email)</code>.
+            <b>Pipeline:</b> 4 источника параллельно → проверка кэша URL (skip известных)
+            → семантическая дедупликация (мерж по регион+тип+дата) → парсер NER+regex
+            → жёсткая проверка (БПЛА И конкретный объект ТЭК) → upsert в SQLite →
+            email-уведомления подписчикам. <b>Цикл каждые 5 минут.</b>
           </div>
         </Card>
       )}

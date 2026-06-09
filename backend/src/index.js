@@ -25,6 +25,7 @@ import {
 import { seedIfEmpty } from './seed.js';
 import { runAllScrapers, getScrapeStatus } from './scrapers/index.js';
 import { sendTestEmail } from './notify.js';
+import { topHotspots, computeRegionTypeRisk } from './risk.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -107,6 +108,20 @@ app.post('/api/incidents/:id/verify', (req, res) => {
 // ===== STATS =====
 
 app.get('/api/stats/kpi', (_req, res) => res.json(statsKpi()));
+
+/**
+ * Топ горячих объектов ТЭК — список пар (регион × тип) с максимальным
+ * риск-скором за последние 90 дней. Используется на дашборде.
+ * Это УНИКАЛЬНАЯ фича модуля (нет в bplarussia, ACLED, GDELT).
+ */
+app.get('/api/stats/hotspots', (req, res) => {
+  const limit = req.query.limit ? Math.min(50, Number(req.query.limit)) : 10;
+  res.json({ items: topHotspots(limit) });
+});
+
+app.get('/api/stats/risk/:region/:objectType', (req, res) => {
+  res.json(computeRegionTypeRisk(req.params.region, req.params.objectType));
+});
 
 // ===== AUDIT =====
 
